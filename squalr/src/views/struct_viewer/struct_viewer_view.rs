@@ -143,7 +143,7 @@ impl Widget for StructViewerView {
             StructViewerFrameAction::SelectField(field_name) => {
                 StructViewerViewData::set_selected_field(self.struct_viewer_view_data.clone(), field_name);
             }
-            StructViewerFrameAction::EditValue(field, value) => {
+            StructViewerFrameAction::EditValue(_field, _value) => {
                 //
             }
         }

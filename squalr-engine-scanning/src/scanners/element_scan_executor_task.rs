@@ -10,10 +10,12 @@ use squalr_engine_api::structures::scanning::plans::element_scan::element_scan_p
 use squalr_engine_api::structures::snapshots::snapshot::Snapshot;
 use squalr_engine_api::structures::snapshots::snapshot_region::SnapshotRegion;
 use squalr_engine_api::structures::tasks::trackable_task::TrackableTask;
+use crate::scan_settings_config::ScanSettingsConfig;
+use squalr_engine_api::structures::settings::scan_thread_priority::ScanThreadPriority;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::{Arc, RwLock};
 use std::thread;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 pub struct ElementScanExecutorTask {}
 
@@ -32,6 +34,7 @@ impl ElementScanExecutorTask {
         let task_clone = task.clone();
 
         thread::spawn(move || {
+            Self::apply_thread_priority(ScanSettingsConfig::get_thread_priority());
             Self::scan_task(&task_clone, process_info, snapshot, element_scan_plan, with_logging);
 
             task_clone.complete();
@@ -59,22 +62,27 @@ impl ElementScanExecutorTask {
             log::info!("Performing manual scan...");
         }
 
-        let mut snapshot = match snapshot.write() {
-            Ok(guard) => guard,
-            Err(error) => {
-                if with_logging {
-                    log::error!("Failed to acquire write lock on snapshot: {}", error);
+        // Avoid holding the snapshot write-lock for the entire scan. Long write-locks freeze the UI and block result
+        // queries. We take the regions out, scan them off-lock, then write them back.
+        let (mut snapshot_regions, total_region_count) = {
+            let mut snapshot_guard = match snapshot.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if with_logging {
+                        log::error!("Failed to acquire write lock on snapshot: {}", error);
+                    }
+                    return;
                 }
+            };
 
-                return;
-            }
+            let regions = std::mem::take(snapshot_guard.get_snapshot_regions_mut());
+            let count = regions.len();
+            (regions, count)
         };
 
         let start_time = Instant::now();
         let processed_region_count = Arc::new(AtomicUsize::new(0));
-        let total_region_count = snapshot.get_region_count();
         let cancellation_token = trackable_task.get_cancellation_token();
-        let snapshot_regions = snapshot.get_snapshot_regions_mut();
 
         // Create a function that processes every snapshot region, from which we will grab the existing snapshot filters (previous results) to perform our next scan.
         let snapshot_iterator = |snapshot_region: &mut SnapshotRegion| {
@@ -87,7 +95,11 @@ impl ElementScanExecutorTask {
 
             // Attempt to read new (or initial) memory values. Ignore failures as they usually indicate deallocated pages. // JIRA: Remove failures somehow.
             if element_scan_plan.get_memory_read_mode() == MemoryReadMode::ReadInterleavedWithScan {
-                let _ = snapshot_region.read_all_memory(&process_info);
+                if snapshot_region.read_all_memory_chunked(&process_info).is_err() {
+                    snapshot_region.mark_unreadable();
+                    processed_region_count.fetch_add(1, Ordering::SeqCst);
+                    return;
+                }
             }
 
             /*
@@ -126,6 +138,10 @@ impl ElementScanExecutorTask {
                 let progress = (processed as f32 / total_region_count as f32) * 100.0;
                 trackable_task.set_progress(progress);
             }
+
+            if ScanSettingsConfig::get_pause_while_scanning() {
+                thread::sleep(Duration::from_millis(1));
+            }
         };
 
         // Select either the parallel or sequential iterator. Single-thread is not advised unless debugging.
@@ -136,16 +152,60 @@ impl ElementScanExecutorTask {
             snapshot_regions.par_iter_mut().for_each(snapshot_iterator);
         };
 
-        snapshot.discard_empty_regions();
+        // Finalize: write the scanned regions back into the snapshot.
+        let result_count: u64 = snapshot_regions
+            .iter()
+            .map(|region| region.get_scan_results().get_number_of_results())
+            .sum();
+        {
+            let mut snapshot_guard = match snapshot.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if with_logging {
+                        log::error!("Failed to acquire write lock on snapshot to finalize: {}", error);
+                    }
+                    return;
+                }
+            };
+
+            snapshot_guard.set_snapshot_regions(snapshot_regions);
+        }
 
         if with_logging {
-            let byte_count = snapshot.get_byte_count();
+            let byte_count = snapshot
+                .read()
+                .map(|s| s.get_byte_count())
+                .unwrap_or(0);
             let duration = start_time.elapsed();
             let total_duration = total_start_time.elapsed();
 
             log::info!("Results: {} bytes", StorageSizeConversions::value_to_metric_size(byte_count as u128));
+            log::info!("Result count: {}", result_count);
             log::info!("Scan complete in: {:?}", duration);
             log::info!("Total scan time: {:?}", total_duration);
+
+            if result_count == 0 {
+                log::warn!(
+                    "Scan produced 0 results. If you expected matches, try loosening Memory settings (e.g., disable 'Writable' requirement for strings, or enable additional memory types), or ensure the target stores the value in the selected encoding/type."
+                );
+            }
+        }
+    }
+
+    fn apply_thread_priority(priority: ScanThreadPriority) {
+        #[cfg(windows)]
+        unsafe {
+            use windows_sys::Win32::System::Threading::{
+                GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL, THREAD_PRIORITY_HIGHEST, THREAD_PRIORITY_NORMAL,
+            };
+
+            let value = match priority {
+                ScanThreadPriority::Normal => THREAD_PRIORITY_NORMAL,
+                ScanThreadPriority::AboveNormal => THREAD_PRIORITY_ABOVE_NORMAL,
+                ScanThreadPriority::Highest => THREAD_PRIORITY_HIGHEST,
+            };
+
+            let _ = SetThreadPriority(GetCurrentThread(), value);
         }
     }
 }

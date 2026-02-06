@@ -1,8 +1,9 @@
 use crate::{
     app_context::AppContext,
-    ui::widgets::controls::{groupbox::GroupBox, slider::Slider},
+    models::docking::settings::dockable_window_settings::{DockSettingsConfig, DockableWindowSettings},
+    ui::widgets::controls::{button::Button, groupbox::GroupBox, slider::Slider},
 };
-use eframe::egui::{Align, Layout, Response, RichText, Ui, Widget};
+use eframe::egui::{Align, Align2, Layout, Response, RichText, Ui, Widget};
 use epaint::vec2;
 use squalr_engine_api::{
     commands::{
@@ -78,7 +79,7 @@ impl Widget for SettingsTabGeneralView {
                                     ..GeneralSettingsSetRequest::default()
                                 };
 
-                                general_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |general_settings_set_response| {});
+                                general_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_general_settings_set_response| {});
                             }
 
                             user_interface.add_space(8.0);
@@ -99,6 +100,69 @@ impl Widget for SettingsTabGeneralView {
                                 RichText::new("Engine Request Delay")
                                     .font(theme.font_library.font_noto_sans.font_normal.clone())
                                     .color(theme.foreground),
+                            );
+                        });
+                    })
+                    .desired_width(412.0),
+                );
+
+                user_interface.add_space(12.0);
+                user_interface.add(
+                    GroupBox::new_from_theme(theme, "Layout Recovery", |user_interface| {
+                        user_interface.vertical(|user_interface| {
+                            user_interface.label(
+                                RichText::new("If a docked tab disappears, reset the layout or clear the saved docking layout file.")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                            user_interface.add_space(8.0);
+
+                            let reset_layout_button = user_interface.add_sized(
+                                vec2(220.0, 28.0),
+                                Button::new_from_theme(theme),
+                            );
+                            user_interface.painter().text(
+                                reset_layout_button.rect.center(),
+                                Align2::CENTER_CENTER,
+                                "Reset Layout (Default)",
+                                theme.font_library.font_noto_sans.font_normal.clone(),
+                                theme.foreground,
+                            );
+                            if reset_layout_button.clicked() {
+                                if let Ok(mut docking_manager) = self.app_context.docking_manager.write() {
+                                    docking_manager.set_root(DockSettingsConfig::get_default_layout());
+                                }
+                            }
+
+                            user_interface.add_space(6.0);
+                            let clear_layout_button = user_interface.add_sized(
+                                vec2(220.0, 28.0),
+                                Button::new_from_theme(theme),
+                            );
+                            user_interface.painter().text(
+                                clear_layout_button.rect.center(),
+                                Align2::CENTER_CENTER,
+                                "Clear saved layout file",
+                                theme.font_library.font_noto_sans.font_normal.clone(),
+                                theme.foreground,
+                            );
+                            if clear_layout_button.clicked() {
+                                if !DockableWindowSettings::clear_config_file() {
+                                    log::error!("Failed to remove docking_settings.json.");
+                                }
+                                if let Ok(mut docking_manager) = self.app_context.docking_manager.write() {
+                                    docking_manager.set_root(DockSettingsConfig::get_default_layout());
+                                }
+                            }
+
+                            user_interface.add_space(6.0);
+                            user_interface.label(
+                                RichText::new(format!(
+                                    "Layout file: {}",
+                                    DockableWindowSettings::get_config_path_display()
+                                ))
+                                .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                .color(theme.foreground),
                             );
                         });
                     })

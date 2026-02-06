@@ -12,6 +12,60 @@ impl PrivilegedCommandRequestExecutor for ScanSettingsSetRequest {
         &self,
         _engine_privileged_state: &Arc<EnginePrivilegedState>,
     ) -> <Self as PrivilegedCommandRequestExecutor>::ResponseType {
+        if let Some(scan_buffer_kb) = self.scan_buffer_kb {
+            ScanSettingsConfig::set_scan_buffer_kb(scan_buffer_kb);
+        }
+
+        if let Some(thread_priority) = self.thread_priority {
+            ScanSettingsConfig::set_thread_priority(thread_priority);
+        }
+
+        if let Some(fast_scan_enabled) = self.fast_scan_enabled {
+            ScanSettingsConfig::set_fast_scan_enabled(fast_scan_enabled);
+        }
+
+        if let Some(fast_scan_alignment) = self.fast_scan_alignment {
+            ScanSettingsConfig::set_fast_scan_alignment(Some(fast_scan_alignment));
+        }
+
+        if let Some(clear_fast_scan_alignment) = self.clear_fast_scan_alignment {
+            if clear_fast_scan_alignment {
+                ScanSettingsConfig::set_fast_scan_alignment(None);
+            }
+        }
+
+        if let Some(fast_scan_last_digits) = self.fast_scan_last_digits {
+            ScanSettingsConfig::set_fast_scan_last_digits(Some(fast_scan_last_digits));
+        }
+
+        if let Some(clear_fast_scan_last_digits) = self.clear_fast_scan_last_digits {
+            if clear_fast_scan_last_digits {
+                ScanSettingsConfig::set_fast_scan_last_digits(None);
+            }
+        }
+
+        if let Some(clear_memory_alignment) = self.clear_memory_alignment {
+            if clear_memory_alignment {
+                ScanSettingsConfig::set_memory_alignment(None);
+            }
+        }
+
+        if let Some(pause_while_scanning) = self.pause_while_scanning {
+            ScanSettingsConfig::set_pause_while_scanning(pause_while_scanning);
+        }
+
+        if let Some(repeat_scan_delay_ms) = self.repeat_scan_delay_ms {
+            ScanSettingsConfig::set_repeat_scan_delay_ms(repeat_scan_delay_ms);
+        }
+
+        if let Some(results_page_size_auto) = self.results_page_size_auto {
+            ScanSettingsConfig::set_results_page_size_auto(results_page_size_auto);
+        }
+
+        if let Some(results_page_size_max) = self.results_page_size_max {
+            ScanSettingsConfig::set_results_page_size_max(results_page_size_max);
+        }
+
         if let Some(results_page_size) = self.results_page_size {
             ScanSettingsConfig::set_results_page_size(results_page_size);
         }

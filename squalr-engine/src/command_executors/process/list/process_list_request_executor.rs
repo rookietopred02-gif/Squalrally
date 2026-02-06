@@ -13,14 +13,6 @@ impl PrivilegedCommandRequestExecutor for ProcessListRequest {
         &self,
         _engine_privileged_state: &Arc<EnginePrivilegedState>,
     ) -> <Self as PrivilegedCommandRequestExecutor>::ResponseType {
-        log::info!(
-            "Listing processes with options: require_windowed={}, search_name={:?}, match_case={}, limit={:?}",
-            self.require_windowed,
-            self.search_name,
-            self.match_case,
-            self.limit
-        );
-
         let options = ProcessQueryOptions {
             search_name: self.search_name.as_ref().cloned(),
             required_process_id: None,

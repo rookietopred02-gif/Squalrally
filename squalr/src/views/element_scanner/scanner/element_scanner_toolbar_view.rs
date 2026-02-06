@@ -9,9 +9,13 @@ use crate::{
     },
     views::element_scanner::scanner::view_data::element_scanner_view_data::ElementScannerViewData,
 };
-use eframe::egui::{Align, Layout, Response, Sense, Ui, UiBuilder, Widget};
+use eframe::egui::{Align, Layout, Response, RichText, Sense, Spinner, Ui, UiBuilder, Widget};
 use epaint::{Color32, CornerRadius, vec2};
-use squalr_engine_api::{dependency_injection::dependency::Dependency, structures::scanning::comparisons::scan_compare_type::ScanCompareType};
+use squalr_engine_api::{
+    dependency_injection::dependency::Dependency,
+    registries::symbols::symbol_registry::SymbolRegistry,
+    structures::scanning::comparisons::scan_compare_type::ScanCompareType,
+};
 use std::sync::Arc;
 
 #[derive(Clone)]
@@ -90,8 +94,14 @@ impl Widget for ElementScannerToolbarView {
         let mut should_perform_new_scan = false;
         let mut should_collect_values = false;
         let mut should_start_scan = false;
+        let mut should_cancel_scan = false;
         let mut should_add_new_scan_constraint = false;
         let mut remove_scan_constraint_index = 0;
+
+        let previous_data_type_id = element_scanner_view_data
+            .selected_data_type
+            .get_data_type_id()
+            .to_string();
 
         // Top row.
         toolbar_user_interface.allocate_ui(vec2(toolbar_user_interface.available_width(), top_row_height), |user_interface| {
@@ -135,15 +145,76 @@ impl Widget for ElementScannerToolbarView {
                     button_size,
                     Button::new_from_theme(theme)
                         .background_color(Color32::TRANSPARENT)
-                        .with_tooltip_text("Start scan."),
+                        .with_tooltip_text(match element_scanner_view_data.view_state {
+                            crate::views::element_scanner::scanner::element_scanner_view_state::ElementScannerViewState::ScanInProgress => "Cancel scan.",
+                            _ => "Start scan.",
+                        }),
                 );
-                IconDraw::draw(user_interface, button_start_scan.rect, &theme.icon_library.icon_handle_navigation_right_arrow);
+                match element_scanner_view_data.view_state {
+                    crate::views::element_scanner::scanner::element_scanner_view_state::ElementScannerViewState::ScanInProgress => {
+                        IconDraw::draw(user_interface, button_start_scan.rect, &theme.icon_library.icon_handle_navigation_cancel);
+                    }
+                    _ => {
+                        IconDraw::draw(user_interface, button_start_scan.rect, &theme.icon_library.icon_handle_navigation_right_arrow);
+                    }
+                }
 
                 if button_start_scan.clicked() {
-                    should_start_scan = true;
+                    match element_scanner_view_data.view_state {
+                        crate::views::element_scanner::scanner::element_scanner_view_state::ElementScannerViewState::ScanInProgress => {
+                            should_cancel_scan = true;
+                        }
+                        _ => {
+                            should_start_scan = true;
+                        }
+                    }
                 }
+
+                user_interface.with_layout(Layout::right_to_left(Align::Center), |ui| {
+                    if let Some(message) = &element_scanner_view_data.last_error_message {
+                        ui.label(
+                            RichText::new(message)
+                                .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                .color(theme.background_control_danger),
+                        );
+                        ui.add_space(8.0);
+                    }
+
+                    if matches!(
+                        element_scanner_view_data.view_state,
+                        crate::views::element_scanner::scanner::element_scanner_view_state::ElementScannerViewState::ScanInProgress
+                    ) {
+                        ui.add(Spinner::new().color(theme.foreground));
+                        ui.label(
+                            RichText::new(format!("Progress: {:.0}%", element_scanner_view_data.scan_progress * 100.0))
+                                .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                .color(theme.foreground),
+                        );
+                        ui.add_space(8.0);
+                    }
+                });
             });
         });
+
+        let symbol_registry = SymbolRegistry::get_instance();
+        let supported_formats = symbol_registry.get_supported_anonymous_value_string_formats(&element_scanner_view_data.selected_data_type);
+        let default_format = symbol_registry.get_default_anonymous_value_string_format(&element_scanner_view_data.selected_data_type);
+        let data_type_changed = element_scanner_view_data
+            .selected_data_type
+            .get_data_type_id()
+            != previous_data_type_id;
+
+        if data_type_changed || !supported_formats.contains(&element_scanner_view_data.active_display_format) {
+            element_scanner_view_data.active_display_format = default_format;
+        }
+
+        for scan_value_and_constraint in element_scanner_view_data.scan_values_and_constraints.iter_mut() {
+            if data_type_changed || !supported_formats.contains(&scan_value_and_constraint.current_scan_value.get_anonymous_value_string_format()) {
+                scan_value_and_constraint
+                    .current_scan_value
+                    .set_anonymous_value_string_format(default_format);
+            }
+        }
 
         let selected_data_type = &element_scanner_view_data.selected_data_type.clone();
 
@@ -220,6 +291,8 @@ impl Widget for ElementScannerToolbarView {
             ElementScannerViewData::reset_scan(self.element_scanner_view_data.clone(), self.app_context.engine_unprivileged_state.clone());
         } else if should_collect_values {
             ElementScannerViewData::collect_values(self.app_context.engine_unprivileged_state.clone());
+        } else if should_cancel_scan {
+            ElementScannerViewData::cancel_scan(self.element_scanner_view_data.clone(), self.app_context.engine_unprivileged_state.clone());
         } else if should_start_scan {
             ElementScannerViewData::start_scan(self.element_scanner_view_data.clone(), self.app_context.engine_unprivileged_state.clone());
         } else if should_add_new_scan_constraint {

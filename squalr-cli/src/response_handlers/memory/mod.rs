@@ -9,5 +9,8 @@ pub fn handle_memory_response(cmd: MemoryResponse) {
     match cmd {
         MemoryResponse::Read { memory_read_response } => handle_memory_read_response(memory_read_response),
         MemoryResponse::Write { memory_write_response } => handle_memory_response_write(memory_write_response),
+        MemoryResponse::Regions { memory_regions_response } => {
+            log::info!("{:?}", memory_regions_response);
+        }
     }
 }

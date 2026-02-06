@@ -92,6 +92,28 @@ impl DockingManager {
         root.select_tab_by_window_id(window_id)
     }
 
+    pub fn set_window_visible(
+        &mut self,
+        window_id: &str,
+        is_visible: bool,
+    ) -> bool {
+        let was_visible = self
+            .get_node_by_id(window_id)
+            .map(|node| node.is_visible())
+            .unwrap_or(false);
+
+        if let Some(docked_node) = self.get_node_by_id_mut(window_id) {
+            docked_node.set_visible(is_visible);
+
+            if is_visible {
+                self.select_tab_by_window_id(window_id);
+            }
+            return was_visible != is_visible;
+        }
+
+        false
+    }
+
     /// Given a `window_id`, this method determines which sibling tab is active, if any.
     pub fn get_active_tab(
         &self,

@@ -1,4 +1,5 @@
 use crate::commands::memory::read::memory_read_request::MemoryReadRequest;
+use crate::commands::memory::regions::memory_regions_request::MemoryRegionsRequest;
 use crate::commands::memory::write::memory_write_request::MemoryWriteRequest;
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
@@ -12,5 +13,9 @@ pub enum MemoryCommand {
     Write {
         #[structopt(flatten)]
         memory_write_request: MemoryWriteRequest,
+    },
+    Regions {
+        #[structopt(flatten)]
+        memory_regions_request: MemoryRegionsRequest,
     },
 }

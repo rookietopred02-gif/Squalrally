@@ -153,18 +153,16 @@ impl<'lifetime> Widget for Button<'lifetime> {
             border_color: self.border_color,
             border_color_focused: self.border_color_focused.unwrap_or(self.border_color),
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Tooltip.
         if !self.tooltip_text.is_empty() {
             response = response.on_hover_text(self.tooltip_text);
         }
 
-        // Click sound.
+        // Keep the hook point for future sound playback without noisy stdout logging.
         if response.clicked() {
-            if let Some(sound) = self.click_sound {
-                println!("JIRA: Play sound: {}", sound);
-            }
+            let _click_sound = self.click_sound;
         }
 
         response

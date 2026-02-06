@@ -69,7 +69,7 @@ impl<'a> Widget for ToolbarMenuItemView<'a> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Checkbox Overlay Drawing (manual, no layout allocation).
         if let Some(check_state) = self.check_state {

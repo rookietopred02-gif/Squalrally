@@ -1,5 +1,5 @@
 use crate::app_context::AppContext;
-use eframe::egui::{Align, Label, Layout, Response, RichText, ScrollArea, Ui, UiBuilder, Widget};
+use eframe::egui::{Align, Layout, Response, RichText, ScrollArea, TextStyle, Ui, UiBuilder, Widget};
 use epaint::Vec2;
 use log::Level;
 use std::sync::Arc;
@@ -41,12 +41,15 @@ impl Widget for OutputView {
                         .layout(Layout::top_down(Align::Min));
                     let mut inner_user_interface = user_interface.new_child(builder);
 
+                    let row_height = inner_user_interface.text_style_height(&TextStyle::Body);
+
                     ScrollArea::vertical()
                         .id_salt("output")
                         .auto_shrink([false, false])
                         .stick_to_bottom(true)
-                        .show(&mut inner_user_interface, |inner_user_interface| {
-                            for log_message in log_history.iter() {
+                        .show_rows(&mut inner_user_interface, row_height, log_history.len(), |inner_user_interface, row_range| {
+                            for row_index in row_range {
+                                let log_message = &log_history[row_index];
                                 let color = match log_message.level {
                                     Level::Error => theme.background_control_danger,
                                     Level::Warn => theme.background_control_warning,

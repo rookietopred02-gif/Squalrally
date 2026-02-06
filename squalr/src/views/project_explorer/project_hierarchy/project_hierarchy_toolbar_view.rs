@@ -14,7 +14,7 @@ use std::sync::Arc;
 #[derive(Clone)]
 pub struct ProjectHierarchyToolbarView {
     app_context: Arc<AppContext>,
-    project_hierarchy_view_data: Dependency<ProjectHierarchyViewData>,
+    _project_hierarchy_view_data: Dependency<ProjectHierarchyViewData>,
 }
 
 impl ProjectHierarchyToolbarView {
@@ -24,7 +24,7 @@ impl ProjectHierarchyToolbarView {
             .get_dependency::<ProjectHierarchyViewData>();
         let instance = Self {
             app_context,
-            project_hierarchy_view_data,
+            _project_hierarchy_view_data: project_hierarchy_view_data,
         };
 
         instance

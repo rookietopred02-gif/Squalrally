@@ -22,9 +22,9 @@ impl ProjectItemType for ProjectItemTypeAddress {
 
     fn on_activated_changed(
         &self,
-        engine_bindings: &Arc<RwLock<dyn EngineApiPrivilegedBindings>>,
-        registries: &Registries,
-        project_item: &ProjectItemRef,
+        _engine_bindings: &Arc<RwLock<dyn EngineApiPrivilegedBindings>>,
+        _registries: &Registries,
+        _project_item: &ProjectItemRef,
     ) {
         /*
         let address = ProjectItemTypeAddress::get_field_address(project_item);

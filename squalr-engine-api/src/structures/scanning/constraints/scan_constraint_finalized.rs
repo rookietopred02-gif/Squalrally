@@ -51,7 +51,9 @@ impl ScanConstraintFinalized {
     pub fn new(scan_constraint: ScanConstraint) -> Self {
         let symbol_registry = SymbolRegistry::get_instance();
         let periodicity = Self::calculate_periodicity(symbol_registry, &scan_constraint.get_data_value(), &scan_constraint.get_scan_compare_type());
-        let unit_size_bytes = symbol_registry.get_unit_size_in_bytes(scan_constraint.get_data_value().get_data_type_ref());
+        let data_type_unit_size_bytes = symbol_registry.get_unit_size_in_bytes(scan_constraint.get_data_value().get_data_type_ref());
+        let value_size_bytes = scan_constraint.get_data_value().get_size_in_bytes();
+        let unit_size_bytes = data_type_unit_size_bytes.max(value_size_bytes);
         let scan_function_scalar = Self::build_scan_function_scalar(&scan_constraint);
         let scan_function_vector_16 = Self::build_scan_function_vector::<16>(&scan_constraint);
         let scan_function_vector_32 = Self::build_scan_function_vector::<32>(&scan_constraint);

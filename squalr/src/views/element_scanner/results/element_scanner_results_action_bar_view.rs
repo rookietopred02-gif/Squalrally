@@ -11,7 +11,7 @@ use crate::{
         scanner::view_data::element_scanner_view_data::ElementScannerViewData,
     },
 };
-use eframe::egui::{Align, Layout, Response, Sense, Ui, UiBuilder, Widget};
+use eframe::egui::{Align, Layout, Response, RichText, Sense, Ui, UiBuilder, Widget};
 use epaint::{Color32, CornerRadius, Rect, Stroke, StrokeKind, pos2, vec2};
 use squalr_engine_api::dependency_injection::dependency::Dependency;
 use std::sync::Arc;
@@ -73,12 +73,6 @@ impl<'lifetime> Widget for ElementScannerResultsActionBarView<'lifetime> {
         let (allocated_size_rectangle, response) =
             user_interface.allocate_exact_size(vec2(user_interface.available_width(), self.get_height()), Sense::hover());
 
-        let builder = UiBuilder::new()
-            .max_rect(allocated_size_rectangle)
-            .layout(Layout::left_to_right(Align::Center));
-
-        let mut toolbar_user_interface = user_interface.new_child(builder);
-
         let mut element_scanner_results_view_data = match self
             .element_scanner_results_view_data
             .write("Element scanner results action bar element scanner results view data")
@@ -94,13 +88,55 @@ impl<'lifetime> Widget for ElementScannerResultsActionBarView<'lifetime> {
             None => return response,
         };
 
+        let result_count = element_scanner_results_view_data.result_count;
+        let current_page_count = element_scanner_results_view_data.current_scan_results.len() as u64;
+        let page_size = element_scanner_results_view_data.last_page_size.max(1);
+        let (show_start, show_end) = if result_count == 0 || current_page_count == 0 {
+            (0, 0)
+        } else {
+            let start = element_scanner_results_view_data
+                .current_page_index
+                .saturating_mul(page_size)
+                .saturating_add(1);
+            let end = start
+                .saturating_add(current_page_count)
+                .saturating_sub(1)
+                .min(result_count);
+            (start, end)
+        };
+        let stats_text = format!("Found: {} | Showing {}~{}", result_count, show_start, show_end);
+        let stats_text_width = user_interface.fonts(|fonts| {
+            fonts
+                .layout_no_wrap(
+                    stats_text.clone(),
+                    theme.font_library.font_noto_sans.font_normal.clone(),
+                    theme.foreground,
+                )
+                .size()
+                .x
+        });
+        let right_min_width = (stats_text_width + 24.0).max(140.0);
+        let left_max_x = (allocated_size_rectangle.max.x - right_min_width).max(allocated_size_rectangle.min.x + 120.0);
+        let left_rect = Rect::from_min_max(allocated_size_rectangle.min, pos2(left_max_x, allocated_size_rectangle.max.y));
+        let right_rect = Rect::from_min_max(pos2(left_max_x, allocated_size_rectangle.min.y), allocated_size_rectangle.max);
+
+        let left_builder = UiBuilder::new()
+            .max_rect(left_rect)
+            .layout(Layout::left_to_right(Align::Center));
+        let right_builder = UiBuilder::new()
+            .max_rect(right_rect)
+            .layout(Layout::right_to_left(Align::Center));
+
+        let mut left_ui = user_interface.new_child(left_builder);
+        let mut right_ui = user_interface.new_child(right_builder);
+
         // Background.
         user_interface
             .painter()
             .rect_filled(allocated_size_rectangle, CornerRadius::ZERO, theme.background_panel);
 
         // Border.
-        toolbar_user_interface.painter().rect_stroke(
+        left_ui.painter().rect_stroke(
             allocated_size_rectangle,
             CornerRadius::ZERO,
             Stroke::new(1.0, theme.submenu_border),
@@ -108,7 +144,7 @@ impl<'lifetime> Widget for ElementScannerResultsActionBarView<'lifetime> {
         );
 
         // Toolbar buttons.
-        toolbar_user_interface.with_layout(Layout::left_to_right(Align::Center), |user_interface| {
+        left_ui.with_layout(Layout::left_to_right(Align::Center), |user_interface| {
             user_interface.add_space(8.0);
             if user_interface
                 .add(Checkbox::new_from_theme(theme).with_check_state(self.selection_freeze_checkstate))
@@ -127,7 +163,7 @@ impl<'lifetime> Widget for ElementScannerResultsActionBarView<'lifetime> {
                 }
             }
 
-            let y_center = allocated_size_rectangle.center().y - button_size.y * 0.5;
+            let y_center = left_rect.center().y - button_size.y * 0.5;
             let add_selection_response = user_interface.put(
                 Rect::from_min_size(pos2(self.address_splitter_position_x, y_center), button_size),
                 Button::new_from_theme(theme)
@@ -188,6 +224,18 @@ impl<'lifetime> Widget for ElementScannerResultsActionBarView<'lifetime> {
                     ElementScannerResultFrameAction::CommitValueToSelection(element_scanner_results_view_data.current_display_string.clone());
             }
         });
+
+        right_ui.add_space(8.0);
+        right_ui.add(
+            eframe::egui::Label::new(
+                RichText::new(stats_text)
+                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                    .color(theme.foreground),
+            )
+            .truncate()
+            .wrap_mode(eframe::egui::TextWrapMode::Truncate),
+        );
+        right_ui.add_space(8.0);
 
         response
     }

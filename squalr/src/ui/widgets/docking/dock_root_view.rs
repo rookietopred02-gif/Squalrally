@@ -39,7 +39,7 @@ impl Widget for DockRootView {
             .painter()
             .rect_filled(available_size_rect, CornerRadius::ZERO, theme.background_panel);
 
-        if let Ok(mut docking_manager) = docking_manager.try_write() {
+        if let Ok(mut docking_manager) = docking_manager.write() {
             docking_manager.prepare_for_presentation();
             docking_manager
                 .get_main_window_layout_mut()

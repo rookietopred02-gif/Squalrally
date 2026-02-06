@@ -10,11 +10,14 @@ use squalr_engine_api::registries::project_item_types::project_item_type_registr
 use squalr_engine_api::registries::registries::Registries;
 use squalr_engine_api::registries::scan_rules::element_scan_rule_registry::ElementScanRuleRegistry;
 use squalr_engine_api::registries::symbols::symbol_registry::SymbolRegistry;
+use squalr_engine_api::structures::pointer_scan::pointer_scan_results::PointerScanResults;
 use squalr_engine_api::structures::snapshots::snapshot::Snapshot;
 use squalr_engine_processes::process::process_manager::ProcessManager;
 use squalr_engine_processes::process_query::process_queryer::ProcessQuery;
 use squalr_engine_scanning::freeze_task::snapshot_scan_result_freeze_task::SnapshotScanResultFreezeTask;
 use std::sync::{Arc, RwLock};
+#[cfg(windows)]
+use crate::privileges::windows_privileges;
 
 /// Tracks critical engine state for internal use. This includes executing engine tasks, commands, and events.
 pub struct EnginePrivilegedState {
@@ -26,6 +29,8 @@ pub struct EnginePrivilegedState {
 
     /// The current snapshot of process memory, including any scan results.
     snapshot: Arc<RwLock<Snapshot>>,
+    /// Stores the most recent pointer scan results for paging.
+    pointer_scan_results: Arc<RwLock<PointerScanResults>>,
 
     /// Defines functionality that can be invoked by the engine for the GUI or CLI to handle.
     engine_bindings: Arc<RwLock<dyn EngineApiPrivilegedBindings>>,
@@ -46,8 +51,12 @@ impl EnginePrivilegedState {
         };
 
         let engine_bindings: Arc<RwLock<dyn EngineApiPrivilegedBindings>> = match engine_mode {
-            EngineMode::Standalone => unsafe { engine_bindings_standalone.clone().unwrap_unchecked() },
-            EngineMode::PrivilegedShell => unsafe { engine_bindings_interprocess.clone().unwrap_unchecked() },
+            EngineMode::Standalone => engine_bindings_standalone
+                .clone()
+                .expect("Standalone engine bindings should be initialized in Standalone mode"),
+            EngineMode::PrivilegedShell => engine_bindings_interprocess
+                .clone()
+                .expect("Interprocess engine bindings should be initialized in PrivilegedShell mode"),
             EngineMode::UnprivilegedHost => unreachable!("Privileged state should never be created on an unprivileged host."),
         };
 
@@ -55,6 +64,7 @@ impl EnginePrivilegedState {
         let process_manager = ProcessManager::new(event_emitter.clone());
         let task_manager = TrackableTaskManager::new();
         let snapshot = Arc::new(RwLock::new(Snapshot::new()));
+        let pointer_scan_results = Arc::new(RwLock::new(PointerScanResults::default()));
         let registries = Arc::new(Registries::new());
 
         SnapshotScanResultFreezeTask::start_task(process_manager.get_opened_process_ref(), registries.get_freeze_list_registry().clone());
@@ -63,9 +73,13 @@ impl EnginePrivilegedState {
             process_manager,
             task_manager,
             snapshot,
+            pointer_scan_results,
             engine_bindings,
             registries,
         });
+
+        #[cfg(windows)]
+        windows_privileges::enable_debug_privilege();
 
         // Initialize standalone privileged bindings if they are present.
         if let Some(engine_bindings_standalone) = engine_bindings_standalone.as_ref() {
@@ -114,6 +128,10 @@ impl EnginePrivilegedState {
     /// Gets the current snapshot, which contains all captured memory and scan results.
     pub fn get_snapshot(&self) -> Arc<RwLock<Snapshot>> {
         self.snapshot.clone()
+    }
+
+    pub fn get_pointer_scan_results(&self) -> Arc<RwLock<PointerScanResults>> {
+        self.pointer_scan_results.clone()
     }
 
     /// Gets all engine registries.

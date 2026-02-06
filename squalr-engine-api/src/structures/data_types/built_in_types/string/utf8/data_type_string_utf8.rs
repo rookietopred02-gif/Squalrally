@@ -6,6 +6,7 @@ use crate::structures::data_values::anonymous_value_string_format::AnonymousValu
 use crate::structures::memory::endian::Endian;
 use crate::structures::{data_types::data_type::DataType, data_values::data_value::DataValue};
 use serde::{Deserialize, Serialize};
+use std::str;
 
 #[derive(Clone, Debug, Serialize, Deserialize)]
 pub struct DataTypeStringUtf8 {}
@@ -68,9 +69,38 @@ impl DataType for DataTypeStringUtf8 {
         value_bytes: &[u8],
         anonymous_value_string_format: AnonymousValueStringFormat,
     ) -> Result<AnonymousValueString, DataTypeError> {
-        Err(DataTypeError::DecodingError {
-            error: "Not implemented".to_string(),
-        })
+        let bytes = match value_bytes.iter().position(|value| *value == 0) {
+            Some(index) => &value_bytes[..index],
+            None => value_bytes,
+        };
+
+        match anonymous_value_string_format {
+            AnonymousValueStringFormat::String => {
+                let decoded = str::from_utf8(bytes).map_err(|error| DataTypeError::DecodingError {
+                    error: format!("Invalid UTF-8: {}", error),
+                })?;
+
+                Ok(AnonymousValueString::new(
+                    decoded.to_string(),
+                    AnonymousValueStringFormat::String,
+                    crate::structures::data_values::container_type::ContainerType::ArrayFixed(bytes.len() as u64),
+                ))
+            }
+            AnonymousValueStringFormat::Hexadecimal => {
+                let hex = bytes
+                    .iter()
+                    .map(|byte| format!("{:02X}", byte))
+                    .collect::<Vec<_>>()
+                    .join(" ");
+
+                Ok(AnonymousValueString::new(
+                    hex,
+                    AnonymousValueStringFormat::Hexadecimal,
+                    crate::structures::data_values::container_type::ContainerType::ArrayFixed(bytes.len() as u64),
+                ))
+            }
+            _ => Err(DataTypeError::ParseError("Unsupported data value format".to_string())),
+        }
     }
 
     fn get_supported_anonymous_value_string_formats(&self) -> Vec<AnonymousValueStringFormat> {

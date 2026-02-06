@@ -11,9 +11,57 @@ pub struct MemorySettingsConfig {
 }
 
 impl MemorySettingsConfig {
+    fn normalize_settings(config: &mut MemorySettings) -> bool {
+        let mut changed = false;
+
+        let has_any_memory_type = config.memory_type_none || config.memory_type_private || config.memory_type_image || config.memory_type_mapped;
+        if !has_any_memory_type {
+            // Avoid self-sabotage (0 pages scanned) by restoring a safe default set.
+            config.memory_type_none = false;
+            config.memory_type_private = true;
+            config.memory_type_image = true;
+            config.memory_type_mapped = false;
+            changed = true;
+        }
+
+        if config.required_write && config.excluded_write {
+            config.excluded_write = false;
+            changed = true;
+        }
+
+        if config.required_execute && config.excluded_execute {
+            config.excluded_execute = false;
+            changed = true;
+        }
+
+        if config.required_copy_on_write && config.excluded_copy_on_write {
+            config.excluded_copy_on_write = false;
+            changed = true;
+        }
+
+        if !config.memory_type_image && config.only_main_module_image {
+            config.only_main_module_image = false;
+            changed = true;
+        }
+
+        if config.start_address >= config.end_address {
+            config.start_address = 0;
+            config.end_address = u64::MAX;
+            changed = true;
+        }
+
+        if !config.only_query_usermode && config.start_address == 0 && config.end_address == u64::MAX {
+            // Avoid scanning kernel address space by default.
+            config.only_query_usermode = true;
+            changed = true;
+        }
+
+        changed
+    }
+
     fn new() -> Self {
         let config_file = Self::default_config_path();
-        let config = if config_file.exists() {
+        let mut config = if config_file.exists() {
             match fs::read_to_string(&config_file) {
                 Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
                 Err(_) => MemorySettings::default(),
@@ -21,6 +69,13 @@ impl MemorySettingsConfig {
         } else {
             MemorySettings::default()
         };
+
+        let did_normalize = Self::normalize_settings(&mut config);
+        if did_normalize || !config_file.exists() {
+            if let Ok(json) = to_string_pretty(&config) {
+                let _ = fs::write(&config_file, json);
+            }
+        }
 
         Self {
             config: Arc::new(RwLock::new(config)),
@@ -52,7 +107,8 @@ impl MemorySettingsConfig {
     }
 
     fn save_config() {
-        if let Ok(config) = Self::get_instance().config.read() {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            let _ = Self::normalize_settings(&mut *config);
             if let Ok(json) = to_string_pretty(&*config) {
                 let _ = fs::write(&Self::get_instance().config_file, json);
             }
@@ -218,6 +274,54 @@ impl MemorySettingsConfig {
     pub fn set_excluded_copy_on_write(value: bool) {
         if let Ok(mut config) = Self::get_instance().config.write() {
             config.excluded_copy_on_write = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_excluded_no_cache() -> bool {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.excluded_no_cache
+        } else {
+            MemorySettings::default().excluded_no_cache
+        }
+    }
+
+    pub fn set_excluded_no_cache(value: bool) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.excluded_no_cache = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_excluded_write_combine() -> bool {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.excluded_write_combine
+        } else {
+            MemorySettings::default().excluded_write_combine
+        }
+    }
+
+    pub fn set_excluded_write_combine(value: bool) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.excluded_write_combine = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_only_main_module_image() -> bool {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.only_main_module_image
+        } else {
+            MemorySettings::default().only_main_module_image
+        }
+    }
+
+    pub fn set_only_main_module_image(value: bool) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.only_main_module_image = value;
         }
 
         Self::save_config();

@@ -9,7 +9,9 @@ use squalr_engine_api::{
         privileged_command_request::PrivilegedCommandRequest,
         settings::scan::{list::scan_settings_list_request::ScanSettingsListRequest, set::scan_settings_set_request::ScanSettingsSetRequest},
     },
+    structures::memory::memory_alignment::MemoryAlignment,
     structures::settings::scan_settings::ScanSettings,
+    structures::settings::scan_thread_priority::ScanThreadPriority,
 };
 use std::sync::{Arc, RwLock};
 
@@ -62,23 +64,51 @@ impl Widget for SettingsTabScanView {
                 user_interface.add(
                     GroupBox::new_from_theme(theme, "Scan Results", |user_interface| {
                         user_interface.horizontal(|user_interface| {
-                            let mut value: i64 = cached_scan_settings.results_page_size as i64;
-                            let slider = Slider::new_from_theme(theme)
-                                .current_value(&mut value)
-                                .minimum_value(8)
-                                .maximum_value(128);
-
-                            if user_interface.add(slider).changed() {
+                            let mut auto_fit = cached_scan_settings.results_page_size_auto;
+                            if user_interface
+                                .add(Checkbox::new_from_theme(theme).with_check_state_bool(auto_fit))
+                                .clicked()
+                            {
+                                auto_fit = !auto_fit;
                                 if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
-                                    cached_scan_settings.results_page_size = value as u32;
+                                    cached_scan_settings.results_page_size_auto = auto_fit;
                                 }
 
                                 let scan_settings_set_request = ScanSettingsSetRequest {
-                                    results_page_size: Some(cached_scan_settings.results_page_size),
+                                    results_page_size_auto: Some(auto_fit),
                                     ..ScanSettingsSetRequest::default()
                                 };
 
-                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |scan_settings_set_response| {});
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
+                            }
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Auto fit results to window height")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+
+                        user_interface.add_space(8.0);
+                        user_interface.horizontal(|user_interface| {
+                            let mut value: i64 = cached_scan_settings.results_page_size_max as i64;
+                            let slider = Slider::new_from_theme(theme)
+                                .current_value(&mut value)
+                                .minimum_value(8)
+                                .maximum_value(1_000_000);
+
+                            if user_interface.add(slider).changed() {
+                                if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                    cached_scan_settings.results_page_size_max = value as u32;
+                                }
+
+                                let scan_settings_set_request = ScanSettingsSetRequest {
+                                    results_page_size_max: Some(cached_scan_settings.results_page_size_max),
+                                    ..ScanSettingsSetRequest::default()
+                                };
+
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
                             }
 
                             user_interface.add_space(8.0);
@@ -96,10 +126,103 @@ impl Widget for SettingsTabScanView {
 
                             user_interface.add_space(8.0);
                             user_interface.label(
-                                RichText::new("Results page size")
+                                RichText::new("Results page size max")
                                     .font(theme.font_library.font_noto_sans.font_normal.clone())
                                     .color(theme.foreground),
                             );
+                        });
+                    })
+                    .desired_width(412.0),
+                );
+                user_interface.add_space(4.0);
+                user_interface.add(
+                    GroupBox::new_from_theme(theme, "Performance", |user_interface| {
+                        user_interface.horizontal(|user_interface| {
+                            let mut value: i64 = cached_scan_settings.scan_buffer_kb as i64;
+                            let slider = Slider::new_from_theme(theme)
+                                .current_value(&mut value)
+                                .minimum_value(64)
+                                .maximum_value(16384);
+
+                            if user_interface.add(slider).changed() {
+                                if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                    cached_scan_settings.scan_buffer_kb = value as u32;
+                                }
+
+                                let scan_settings_set_request = ScanSettingsSetRequest {
+                                    scan_buffer_kb: Some(cached_scan_settings.scan_buffer_kb),
+                                    ..ScanSettingsSetRequest::default()
+                                };
+
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                            }
+
+                            user_interface.add_space(8.0);
+                            user_interface.allocate_ui_with_layout(
+                                vec2(48.0, user_interface.available_height()),
+                                Layout::right_to_left(Align::Center),
+                                |user_interface| {
+                                    user_interface.label(
+                                        RichText::new(value.to_string())
+                                            .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                            .color(theme.foreground),
+                                    );
+                                },
+                            );
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Scan buffer (KB)")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+
+                        user_interface.add_space(8.0);
+                        user_interface.horizontal(|user_interface| {
+                            let priority_label = match cached_scan_settings.thread_priority {
+                                ScanThreadPriority::Normal => "Normal",
+                                ScanThreadPriority::AboveNormal => "Above Normal",
+                                ScanThreadPriority::Highest => "Highest",
+                            };
+
+                            user_interface.add(ComboBoxView::new(
+                                self.app_context.clone(),
+                                priority_label,
+                                "settings_tab_scan_thread_priority",
+                                None,
+                                |user_interface: &mut Ui, should_close: &mut bool| {
+                                    let items = [
+                                        (ScanThreadPriority::Normal, "Normal"),
+                                        (ScanThreadPriority::AboveNormal, "Above Normal"),
+                                        (ScanThreadPriority::Highest, "Highest"),
+                                    ];
+
+                                    for (priority, label) in items {
+                                        if user_interface
+                                            .add(crate::ui::widgets::controls::combo_box::combo_box_item_view::ComboBoxItemView::new(
+                                                self.app_context.clone(),
+                                                label,
+                                                None,
+                                                220.0,
+                                            ))
+                                            .clicked()
+                                        {
+                                            if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                                cached_scan_settings.thread_priority = priority;
+                                            }
+
+                                            let scan_settings_set_request = ScanSettingsSetRequest {
+                                                thread_priority: Some(priority),
+                                                ..ScanSettingsSetRequest::default()
+                                            };
+
+                                            scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                                            *should_close = true;
+                                            return;
+                                        }
+                                    }
+                                },
+                            ));
                         });
                     })
                     .desired_width(412.0),
@@ -124,7 +247,7 @@ impl Widget for SettingsTabScanView {
                                     ..ScanSettingsSetRequest::default()
                                 };
 
-                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |scan_settings_set_response| {});
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
                             }
 
                             user_interface.add_space(8.0);
@@ -163,7 +286,7 @@ impl Widget for SettingsTabScanView {
                                         ..ScanSettingsSetRequest::default()
                                     };
 
-                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |scan_settings_set_response| {});
+                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
                                 }
                             }
 
@@ -203,7 +326,7 @@ impl Widget for SettingsTabScanView {
                                         ..ScanSettingsSetRequest::default()
                                     };
 
-                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |scan_settings_set_response| {});
+                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
                                 }
                             }
 
@@ -232,17 +355,293 @@ impl Widget for SettingsTabScanView {
                 );
                 user_interface.add_space(4.0);
                 user_interface.add(
-                    GroupBox::new_from_theme(theme, "Scan Params", |user_interface| {
+                    GroupBox::new_from_theme(theme, "Fast Scan", |user_interface| {
                         user_interface.horizontal(|user_interface| {
+                            if user_interface
+                                .add(Checkbox::new_from_theme(theme).with_check_state_bool(cached_scan_settings.fast_scan_enabled))
+                                .clicked()
+                            {
+                                if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                    cached_scan_settings.fast_scan_enabled = !cached_scan_settings.fast_scan_enabled;
+                                }
+
+                                let scan_settings_set_request = ScanSettingsSetRequest {
+                                    fast_scan_enabled: Some(cached_scan_settings.fast_scan_enabled),
+                                    ..ScanSettingsSetRequest::default()
+                                };
+
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                            }
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Fast scan on by default")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+
+                        user_interface.add_space(8.0);
+                        user_interface.horizontal(|user_interface| {
+                            let alignment_label = match cached_scan_settings.fast_scan_alignment {
+                                Some(MemoryAlignment::Alignment1) => "1-byte",
+                                Some(MemoryAlignment::Alignment2) => "2-bytes",
+                                Some(MemoryAlignment::Alignment4) => "4-bytes",
+                                Some(MemoryAlignment::Alignment8) => "8-bytes",
+                                Some(MemoryAlignment::Alignment16) => "16-bytes",
+                                None => "Auto",
+                            };
+
                             user_interface.add(ComboBoxView::new(
                                 self.app_context.clone(),
-                                "x-byte aligned",
+                                alignment_label,
+                                "settings_tab_scan_fast_alignment",
+                                None,
+                                |user_interface: &mut Ui, should_close: &mut bool| {
+                                    let items = [
+                                        (None, "Auto"),
+                                        (Some(MemoryAlignment::Alignment1), "1-byte"),
+                                        (Some(MemoryAlignment::Alignment2), "2-bytes"),
+                                        (Some(MemoryAlignment::Alignment4), "4-bytes"),
+                                        (Some(MemoryAlignment::Alignment8), "8-bytes"),
+                                        (Some(MemoryAlignment::Alignment16), "16-bytes"),
+                                    ];
+
+                                    for (alignment, label) in items {
+                                        if user_interface
+                                            .add(crate::ui::widgets::controls::combo_box::combo_box_item_view::ComboBoxItemView::new(
+                                                self.app_context.clone(),
+                                                label,
+                                                None,
+                                                220.0,
+                                            ))
+                                            .clicked()
+                                        {
+                                            if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                                cached_scan_settings.fast_scan_alignment = alignment;
+                                            }
+
+                                            let scan_settings_set_request = ScanSettingsSetRequest {
+                                                fast_scan_alignment: alignment,
+                                                clear_fast_scan_alignment: Some(alignment.is_none()),
+                                                ..ScanSettingsSetRequest::default()
+                                            };
+
+                                            scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                                            *should_close = true;
+                                            return;
+                                        }
+                                    }
+                                },
+                            ));
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Alignment")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+
+                        user_interface.add_space(8.0);
+                        user_interface.horizontal(|user_interface| {
+                            let mut enabled = cached_scan_settings.fast_scan_last_digits.is_some();
+                            if user_interface
+                                .add(Checkbox::new_from_theme(theme).with_check_state_bool(enabled))
+                                .clicked()
+                            {
+                                enabled = !enabled;
+                                let new_value = if enabled { Some(0) } else { None };
+                                if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                    cached_scan_settings.fast_scan_last_digits = new_value;
+                                }
+
+                                let scan_settings_set_request = ScanSettingsSetRequest {
+                                    fast_scan_last_digits: new_value,
+                                    clear_fast_scan_last_digits: Some(new_value.is_none()),
+                                    ..ScanSettingsSetRequest::default()
+                                };
+
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                            }
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Use last digits filter")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+
+                        if let Some(mut digits) = cached_scan_settings.fast_scan_last_digits {
+                            user_interface.add_space(4.0);
+                            user_interface.horizontal(|user_interface| {
+                                let mut value: i64 = digits as i64;
+                                let slider = Slider::new_from_theme(theme)
+                                    .current_value(&mut value)
+                                    .minimum_value(0)
+                                    .maximum_value(15);
+
+                                if user_interface.add(slider).changed() {
+                                    digits = value as u8;
+                                    if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                        cached_scan_settings.fast_scan_last_digits = Some(digits);
+                                    }
+
+                                    let scan_settings_set_request = ScanSettingsSetRequest {
+                                        fast_scan_last_digits: Some(digits),
+                                        clear_fast_scan_last_digits: Some(false),
+                                        ..ScanSettingsSetRequest::default()
+                                    };
+
+                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                                }
+
+                                user_interface.add_space(8.0);
+                                user_interface.label(
+                                    RichText::new(format!("Last digit: {:X}", digits))
+                                        .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                        .color(theme.foreground),
+                                );
+                            });
+                        }
+                    })
+                    .desired_width(412.0),
+                );
+                user_interface.add_space(4.0);
+                user_interface.add(
+                    GroupBox::new_from_theme(theme, "Scan Throttle", |user_interface| {
+                        user_interface.horizontal(|user_interface| {
+                            if user_interface
+                                .add(Checkbox::new_from_theme(theme).with_check_state_bool(cached_scan_settings.pause_while_scanning))
+                                .clicked()
+                            {
+                                if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                    cached_scan_settings.pause_while_scanning = !cached_scan_settings.pause_while_scanning;
+                                }
+
+                                let scan_settings_set_request = ScanSettingsSetRequest {
+                                    pause_while_scanning: Some(cached_scan_settings.pause_while_scanning),
+                                    ..ScanSettingsSetRequest::default()
+                                };
+
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                            }
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Pause while scanning")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+
+                        user_interface.add_space(8.0);
+                        user_interface.horizontal(|user_interface| {
+                            let mut value: i64 = cached_scan_settings.repeat_scan_delay_ms as i64;
+                            let slider = Slider::new_from_theme(theme)
+                                .current_value(&mut value)
+                                .minimum_value(0)
+                                .maximum_value(5000);
+
+                            if user_interface.add(slider).changed() {
+                                if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                    cached_scan_settings.repeat_scan_delay_ms = value as u64;
+                                }
+
+                                let scan_settings_set_request = ScanSettingsSetRequest {
+                                    repeat_scan_delay_ms: Some(cached_scan_settings.repeat_scan_delay_ms),
+                                    ..ScanSettingsSetRequest::default()
+                                };
+
+                                scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                            }
+
+                            user_interface.add_space(8.0);
+                            user_interface.allocate_ui_with_layout(
+                                vec2(48.0, user_interface.available_height()),
+                                Layout::right_to_left(Align::Center),
+                                |user_interface| {
+                                    user_interface.label(
+                                        RichText::new(value.to_string())
+                                            .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                            .color(theme.foreground),
+                                    );
+                                },
+                            );
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Repeat scan delay (ms)")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
+                        });
+                    })
+                    .desired_width(412.0),
+                );
+                user_interface.add_space(4.0);
+                user_interface.add(
+                    GroupBox::new_from_theme(theme, "Scan Params", |user_interface| {
+                        user_interface.horizontal(|user_interface| {
+                            let alignment_label = match cached_scan_settings.memory_alignment {
+                                Some(MemoryAlignment::Alignment1) => "1-byte",
+                                Some(MemoryAlignment::Alignment2) => "2-bytes",
+                                Some(MemoryAlignment::Alignment4) => "4-bytes",
+                                Some(MemoryAlignment::Alignment8) => "8-bytes",
+                                Some(MemoryAlignment::Alignment16) => "16-bytes",
+                                None => "Auto",
+                            };
+
+                            user_interface.add(ComboBoxView::new(
+                                self.app_context.clone(),
+                                alignment_label,
                                 "settings_tab_scan_alignment",
                                 None,
                                 |user_interface: &mut Ui, should_close: &mut bool| {
-                                    //
+                                    let items = [
+                                        (None, "Auto"),
+                                        (Some(MemoryAlignment::Alignment1), "1-byte"),
+                                        (Some(MemoryAlignment::Alignment2), "2-bytes"),
+                                        (Some(MemoryAlignment::Alignment4), "4-bytes"),
+                                        (Some(MemoryAlignment::Alignment8), "8-bytes"),
+                                        (Some(MemoryAlignment::Alignment16), "16-bytes"),
+                                    ];
+
+                                    for (alignment, label) in items {
+                                        if user_interface
+                                            .add(crate::ui::widgets::controls::combo_box::combo_box_item_view::ComboBoxItemView::new(
+                                                self.app_context.clone(),
+                                                label,
+                                                None,
+                                                220.0,
+                                            ))
+                                            .clicked()
+                                        {
+                                            if let Ok(mut cached_scan_settings) = self.cached_scan_settings.write() {
+                                                cached_scan_settings.memory_alignment = alignment;
+                                            }
+
+                                            let scan_settings_set_request = ScanSettingsSetRequest {
+                                                memory_alignment: alignment,
+                                                clear_memory_alignment: Some(alignment.is_none()),
+                                                ..ScanSettingsSetRequest::default()
+                                            };
+
+                                            scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_response| {});
+                                            *should_close = true;
+                                            return;
+                                        }
+                                    }
                                 },
                             ));
+
+                            user_interface.add_space(8.0);
+                            user_interface.label(
+                                RichText::new("Alignment override")
+                                    .font(theme.font_library.font_noto_sans.font_normal.clone())
+                                    .color(theme.foreground),
+                            );
                         });
                     })
                     .desired_width(412.0),
@@ -263,7 +662,7 @@ impl Widget for SettingsTabScanView {
                                         ..ScanSettingsSetRequest::default()
                                     };
 
-                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |scan_settings_set_response| {});
+                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
                                 }
                             }
 
@@ -289,7 +688,7 @@ impl Widget for SettingsTabScanView {
                                         ..ScanSettingsSetRequest::default()
                                     };
 
-                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |scan_settings_set_response| {});
+                                    scan_settings_set_request.send(&self.app_context.engine_unprivileged_state, move |_scan_settings_set_response| {});
                                 }
                             }
 

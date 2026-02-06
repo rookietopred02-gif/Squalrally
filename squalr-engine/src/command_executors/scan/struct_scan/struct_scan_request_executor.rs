@@ -9,7 +9,7 @@ impl PrivilegedCommandRequestExecutor for StructScanRequest {
 
     fn execute(
         &self,
-        engine_privileged_state: &Arc<EnginePrivilegedState>,
+        _engine_privileged_state: &Arc<EnginePrivilegedState>,
     ) -> <Self as PrivilegedCommandRequestExecutor>::ResponseType {
         StructScanResponse { trackable_task_handle: None }
     }

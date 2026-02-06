@@ -88,7 +88,7 @@ impl<'lifetime> Widget for TabItemView<'lifetime> {
             border_color: theme.background_control_primary_dark,
             border_color_focused: theme.background_control_primary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Header label centered vertically.
         let text_pos = pos2(

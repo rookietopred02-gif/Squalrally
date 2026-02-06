@@ -38,9 +38,12 @@ impl VectorizationPlan {
         self.element_count - self.get_vectorizable_element_count()
     }
 
-    /// Tail bytes that remain after full vector iterations, measured in *valid bytes* space.
+    /// Tail bytes that remain after full vector iterations, measured in candidate-start space.
+    ///
+    /// This is intentionally based on remainder *elements* (`remainder_elements * stride`) and
+    /// therefore **excludes** any trailing bytes that cannot be the start of a full element.
     pub fn get_remainder_bytes(&self) -> u64 {
-        self.valid_bytes - (self.get_vectorizable_iterations() * self.vector_size_in_bytes)
+        self.get_remainder_elements() * self.element_stride_bytes
     }
 
     /// Gets the byte offset of where the non-vectorizable elements begin.

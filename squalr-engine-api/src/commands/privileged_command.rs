@@ -2,6 +2,7 @@ use crate::commands::memory::memory_command::MemoryCommand;
 use crate::commands::process::process_command::ProcessCommand;
 use crate::commands::scan::scan_command::ScanCommand;
 use crate::commands::scan_results::scan_results_command::ScanResultsCommand;
+use crate::commands::pointer_scan_results::pointer_scan_results_command::PointerScanResultsCommand;
 use crate::commands::settings::settings_command::SettingsCommand;
 use crate::commands::trackable_tasks::trackable_tasks_command::TrackableTasksCommand;
 use serde::{Deserialize, Serialize};
@@ -17,6 +18,9 @@ pub enum PrivilegedCommand {
 
     #[structopt(alias = "res", alias = "r")]
     Results(ScanResultsCommand),
+
+    #[structopt(alias = "pres", alias = "prr")]
+    PointerScanResults(PointerScanResultsCommand),
 
     #[structopt(alias = "scan", alias = "s")]
     Scan(ScanCommand),

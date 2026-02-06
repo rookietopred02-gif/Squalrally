@@ -13,7 +13,7 @@ pub struct ProjectItemEntryView<'lifetime> {
     project_info: &'lifetime ProjectInfo,
     icon: Option<TextureHandle>,
     is_selected: bool,
-    project_hierarchy_frame_action: &'lifetime mut ProjectHierarchyFrameAction,
+    _project_hierarchy_frame_action: &'lifetime mut ProjectHierarchyFrameAction,
 }
 
 impl<'lifetime> ProjectItemEntryView<'lifetime> {
@@ -29,7 +29,7 @@ impl<'lifetime> ProjectItemEntryView<'lifetime> {
             project_info,
             icon,
             is_selected,
-            project_hierarchy_frame_action,
+            _project_hierarchy_frame_action: project_hierarchy_frame_action,
         }
     }
 }
@@ -75,7 +75,7 @@ impl<'lifetime> Widget for ProjectItemEntryView<'lifetime> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         if response.clicked() {
             //

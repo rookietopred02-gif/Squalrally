@@ -19,6 +19,9 @@ impl PrivilegedCommandExecutor for MemoryCommand {
             MemoryCommand::Read { memory_read_request } => memory_read_request
                 .execute(engine_privileged_state)
                 .to_engine_response(),
+            MemoryCommand::Regions { memory_regions_request } => memory_regions_request
+                .execute(engine_privileged_state)
+                .to_engine_response(),
         }
     }
 }

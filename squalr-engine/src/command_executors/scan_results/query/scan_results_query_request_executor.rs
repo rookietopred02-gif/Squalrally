@@ -20,8 +20,17 @@ impl PrivilegedCommandRequestExecutor for ScanResultsQueryRequest {
         engine_privileged_state: &Arc<EnginePrivilegedState>,
     ) -> <Self as PrivilegedCommandRequestExecutor>::ResponseType {
         let symbol_registry = SymbolRegistry::get_instance();
-        let results_page_size = ScanSettingsConfig::get_results_page_size() as u64;
+        let configured_page_size_max = ScanSettingsConfig::get_results_page_size_max().max(1) as u64;
+        let configured_page_size_auto = ScanSettingsConfig::get_results_page_size_auto();
+        let requested_page_size = self.page_size.unwrap_or(configured_page_size_max as u32).max(1) as u64;
+        let results_page_size = if configured_page_size_auto {
+            requested_page_size.min(configured_page_size_max)
+        } else {
+            configured_page_size_max
+        }
+        .max(1);
         let mut scan_results_list = vec![];
+        let mut page_index = self.page_index;
         let mut last_page_index = 0;
         let mut result_count = 0;
         let mut total_size_in_bytes = 0;
@@ -40,9 +49,10 @@ impl PrivilegedCommandRequestExecutor for ScanResultsQueryRequest {
             result_count = snapshot.get_number_of_results();
             last_page_index = result_count.saturating_sub(1) / results_page_size;
             total_size_in_bytes = snapshot.get_byte_count();
+            page_index = self.page_index.clamp(0, last_page_index);
 
             // Get the range of indicies for the elements of this page.
-            let index_of_first_page_entry = self.page_index.clamp(0, last_page_index) * results_page_size;
+            let index_of_first_page_entry = page_index * results_page_size;
             let index_of_last_page_entry = index_of_first_page_entry
                 .saturating_add(results_page_size)
                 .min(result_count);
@@ -104,7 +114,7 @@ impl PrivilegedCommandRequestExecutor for ScanResultsQueryRequest {
 
         ScanResultsQueryResponse {
             scan_results: scan_results_list,
-            page_index: self.page_index,
+            page_index,
             page_size: results_page_size,
             last_page_index,
             result_count,

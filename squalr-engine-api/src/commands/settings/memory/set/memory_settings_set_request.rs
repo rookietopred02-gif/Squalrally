@@ -28,6 +28,12 @@ pub struct MemorySettingsSetRequest {
     pub excluded_execute: Option<bool>,
     #[structopt(short = "e_cow", long)]
     pub excluded_copy_on_write: Option<bool>,
+    #[structopt(short = "e_nc", long)]
+    pub excluded_no_cache: Option<bool>,
+    #[structopt(short = "e_wc", long)]
+    pub excluded_write_combine: Option<bool>,
+    #[structopt(short = "mm_only", long)]
+    pub only_main_module_image: Option<bool>,
     #[structopt(short = "s_adr", long)]
     pub start_address: Option<u64>,
     #[structopt(short = "e_adr", long)]

@@ -1,5 +1,7 @@
 pub mod element_scanner;
+pub mod disassembler;
 pub mod main_window;
+pub mod memory_viewer;
 pub mod output;
 pub mod pointer_scanner;
 pub mod process_selector;

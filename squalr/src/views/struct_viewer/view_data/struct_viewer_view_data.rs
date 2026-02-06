@@ -28,7 +28,7 @@ impl StructViewerViewData {
         struct_viewer_view_data: Dependency<Self>,
         valued_struct_field_name: String,
     ) {
-        let mut struct_viewer_view_data = match struct_viewer_view_data.write("Set selected field") {
+        let mut struct_viewer_view_data = match struct_viewer_view_data.try_write("Set selected field") {
             Some(struct_viewer_view_data) => struct_viewer_view_data,
             None => return,
         };
@@ -37,7 +37,7 @@ impl StructViewerViewData {
     }
 
     pub fn clear_selected_field(struct_viewer_view_data: Dependency<Self>) {
-        let mut struct_viewer_view_data = match struct_viewer_view_data.write("Clear selected field") {
+        let mut struct_viewer_view_data = match struct_viewer_view_data.try_write("Clear selected field") {
             Some(struct_viewer_view_data) => struct_viewer_view_data,
             None => return,
         };
@@ -50,7 +50,7 @@ impl StructViewerViewData {
         valued_struct: ValuedStruct,
         valued_struct_field_edited_callback: Box<dyn FnOnce(ValuedStructField) + Send + Sync>,
     ) {
-        let mut struct_viewer_view_data = match struct_viewer_view_data.write("Focus valued struct") {
+        let mut struct_viewer_view_data = match struct_viewer_view_data.try_write("Focus valued struct") {
             Some(struct_viewer_view_data) => struct_viewer_view_data,
             None => return,
         };
@@ -62,7 +62,7 @@ impl StructViewerViewData {
         valued_structs: Vec<ValuedStruct>,
         valued_struct_field_edited_callback: Box<dyn FnOnce(ValuedStructField) + Send + Sync>,
     ) {
-        let mut struct_viewer_view_data = match struct_viewer_view_data.write("Focus valued struct") {
+        let mut struct_viewer_view_data = match struct_viewer_view_data.try_write("Focus valued struct") {
             Some(struct_viewer_view_data) => struct_viewer_view_data,
             None => return,
         };
@@ -72,7 +72,7 @@ impl StructViewerViewData {
     }
 
     pub fn clear_focus(struct_viewer_view_data: Dependency<Self>) {
-        let mut struct_viewer_view_data = match struct_viewer_view_data.write("Focus valued struct") {
+        let mut struct_viewer_view_data = match struct_viewer_view_data.try_write("Focus valued struct") {
             Some(struct_viewer_view_data) => struct_viewer_view_data,
             None => return,
         };

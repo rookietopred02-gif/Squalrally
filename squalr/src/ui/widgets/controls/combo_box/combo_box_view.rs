@@ -127,7 +127,7 @@ impl<'lifetime, F: FnOnce(&mut Ui, &mut bool)> Widget for ComboBoxView<'lifetime
             border_color: theme.submenu_border,
             border_color_focused: theme.focused_border,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Draw left icon.
         if let Some(icon) = &self.icon {

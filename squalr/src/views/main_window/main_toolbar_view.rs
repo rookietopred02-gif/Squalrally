@@ -2,7 +2,9 @@ use crate::models::toolbar::toolbar_data::ToolbarData;
 use crate::models::toolbar::toolbar_header_item_data::ToolbarHeaderItemData;
 use crate::models::toolbar::toolbar_menu_item_data::ToolbarMenuItemData;
 use crate::ui::widgets::controls::toolbar_menu::toolbar_view::ToolbarView;
+use crate::views::disassembler::disassembler_view::DisassemblerView;
 use crate::views::element_scanner::scanner::element_scanner_view::ElementScannerView;
+use crate::views::memory_viewer::memory_viewer_view::MemoryViewerView;
 use crate::views::output::output_view::OutputView;
 use crate::views::pointer_scanner::pointer_scanner_view::PointerScannerView;
 use crate::views::process_selector::process_selector_view::ProcessSelectorView;
@@ -30,6 +32,8 @@ impl MainToolbarView {
         let docking_manager_for_process_selector = app_context.docking_manager.clone();
         let docking_manager_for_project_explorer = app_context.docking_manager.clone();
         let docking_manager_for_struct_viewer = app_context.docking_manager.clone();
+        let docking_manager_for_disassembler = app_context.docking_manager.clone();
+        let docking_manager_for_memory_viewer = app_context.docking_manager.clone();
         let docking_manager_for_output = app_context.docking_manager.clone();
         let docking_manager_for_pointer_scanner = app_context.docking_manager.clone();
         let docking_manager_for_element_scanner = app_context.docking_manager.clone();
@@ -96,7 +100,32 @@ impl MainToolbarView {
                             None
                         })),
                     ),
-                    // ToolbarMenuItemData::new(MemoryViewerView::WINDOW_ID, "Memory Viewer", Some(move || false)),
+                    ToolbarMenuItemData::new(
+                        DisassemblerView::WINDOW_ID,
+                        "Disassembler",
+                        Some(Box::new(move || {
+                            if let Ok(docking_manager) = docking_manager_for_disassembler.read() {
+                                if let Some(docked_node) = docking_manager.get_node_by_id(DisassemblerView::WINDOW_ID) {
+                                    return Some(docked_node.is_visible());
+                                }
+                            }
+
+                            None
+                        })),
+                    ),
+                    ToolbarMenuItemData::new(
+                        MemoryViewerView::WINDOW_ID,
+                        "Memory Viewer",
+                        Some(Box::new(move || {
+                            if let Ok(docking_manager) = docking_manager_for_memory_viewer.read() {
+                                if let Some(docked_node) = docking_manager.get_node_by_id(MemoryViewerView::WINDOW_ID) {
+                                    return Some(docked_node.is_visible());
+                                }
+                            }
+
+                            None
+                        })),
+                    ),
                     ToolbarMenuItemData::new(
                         OutputView::WINDOW_ID,
                         "Output",
@@ -198,20 +227,21 @@ impl Widget for MainToolbarView {
             ProcessSelectorView::WINDOW_ID
             | ProjectExplorerView::WINDOW_ID
             | StructViewerView::WINDOW_ID
-            // | "window_memory_viewer"
+            | DisassemblerView::WINDOW_ID
+            | MemoryViewerView::WINDOW_ID
             | OutputView::WINDOW_ID
             | PointerScannerView::WINDOW_ID
             | ElementScannerView::WINDOW_ID
             | SettingsView::WINDOW_ID
-            | PointerScannerView::WINDOW_ID
             // | "window_disassembly"
             // | "window_code_tracer"
             => {
                 let docking_manager = &app_context.docking_manager;
 
                 if let Ok(mut docking_manager) = docking_manager.write() {
-                    if let Some(docked_node) = docking_manager.get_node_by_id_mut(selected_id) {
-                        docked_node.set_visible(!docked_node.is_visible());
+                    if let Some(is_visible) = docking_manager.get_node_by_id(selected_id).map(|node| node.is_visible()) {
+                        docking_manager.set_window_visible(selected_id, !is_visible);
+                        docking_manager.prepare_for_presentation();
                     }
                 }
             }

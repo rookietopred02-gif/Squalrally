@@ -51,6 +51,14 @@ where
                 }
                 Simd::from_array(mask)
             }
+            // This will produce a byte pattern of <0x00 ... 0xFF> with a 16-byte stride.
+            MemoryAlignment::Alignment16 => {
+                let mut mask = [0u8; N];
+                for index in (15..N).step_by(16) {
+                    mask[index] = 0xFF;
+                }
+                Simd::from_array(mask)
+            }
         }
     }
 
@@ -129,7 +137,7 @@ where
 
         debug_assert!(vectorizable_iterations > 0);
         debug_assert!(data_type_size < memory_alignment_size);
-        debug_assert!(memory_alignment_size == 2 || memory_alignment_size == 4 || memory_alignment_size == 8);
+        debug_assert!(memory_alignment_size == 2 || memory_alignment_size == 4 || memory_alignment_size == 8 || memory_alignment_size == 16);
 
         if let Some(vector_compare_func) = snapshot_filter_element_scan_plan.get_scan_function_vector() {
             match vector_compare_func {

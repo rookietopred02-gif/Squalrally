@@ -1,6 +1,6 @@
 use squalr_engine_api::structures::data_values::anonymous_value_string::AnonymousValueString;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, Debug)]
 pub enum ElementScannerResultFrameAction {
     None,
     SetSelectionStart(Option<i32>),

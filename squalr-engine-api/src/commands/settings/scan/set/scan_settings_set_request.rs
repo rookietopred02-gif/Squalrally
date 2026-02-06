@@ -5,12 +5,37 @@ use crate::commands::settings::scan::set::scan_settings_set_response::ScanSettin
 use crate::commands::settings::settings_command::SettingsCommand;
 use crate::structures::data_types::floating_point_tolerance::FloatingPointTolerance;
 use crate::structures::scanning::memory_read_mode::MemoryReadMode;
+use crate::structures::settings::scan_thread_priority::ScanThreadPriority;
 use crate::{commands::privileged_command::PrivilegedCommand, structures::memory::memory_alignment::MemoryAlignment};
 use serde::{Deserialize, Serialize};
 use structopt::StructOpt;
 
 #[derive(Clone, StructOpt, Debug, Default, Serialize, Deserialize)]
 pub struct ScanSettingsSetRequest {
+    #[structopt(short = "sb_kb", long)]
+    pub scan_buffer_kb: Option<u32>,
+    #[structopt(short = "tp", long)]
+    pub thread_priority: Option<ScanThreadPriority>,
+    #[structopt(short = "fast", long)]
+    pub fast_scan_enabled: Option<bool>,
+    #[structopt(short = "fast_align", long)]
+    pub fast_scan_alignment: Option<MemoryAlignment>,
+    #[structopt(short = "fast_last", long)]
+    pub fast_scan_last_digits: Option<u8>,
+    #[structopt(long)]
+    pub clear_fast_scan_alignment: Option<bool>,
+    #[structopt(long)]
+    pub clear_fast_scan_last_digits: Option<bool>,
+    #[structopt(long)]
+    pub clear_memory_alignment: Option<bool>,
+    #[structopt(short = "pause", long)]
+    pub pause_while_scanning: Option<bool>,
+    #[structopt(short = "repeat_delay", long)]
+    pub repeat_scan_delay_ms: Option<u64>,
+    #[structopt(long)]
+    pub results_page_size_auto: Option<bool>,
+    #[structopt(long)]
+    pub results_page_size_max: Option<u32>,
     #[structopt(short = "psize", long)]
     pub results_page_size: Option<u32>,
     #[structopt(short = "r_read_interval", long)]

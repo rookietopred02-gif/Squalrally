@@ -7,6 +7,7 @@ pub enum MemoryAlignment {
     Alignment2 = 2,
     Alignment4 = 4,
     Alignment8 = 8,
+    Alignment16 = 16,
 }
 
 impl Default for MemoryAlignment {
@@ -22,6 +23,7 @@ impl From<i32> for MemoryAlignment {
             2 => MemoryAlignment::Alignment2,
             4 => MemoryAlignment::Alignment4,
             8 => MemoryAlignment::Alignment8,
+            16 => MemoryAlignment::Alignment16,
             _ => MemoryAlignment::Alignment1,
         }
     }
@@ -36,6 +38,7 @@ impl FromStr for MemoryAlignment {
             "2" => Ok(MemoryAlignment::Alignment2),
             "4" => Ok(MemoryAlignment::Alignment4),
             "8" => Ok(MemoryAlignment::Alignment8),
+            "16" => Ok(MemoryAlignment::Alignment16),
             _ => Err(format!("Invalid memory alignment: '{}'", string)),
         }
     }

@@ -5,11 +5,12 @@ use crate::{app_context::AppContext, ui::converters::data_type_to_icon_converter
 use eframe::egui::{Id, Response, Ui, Widget};
 use squalr_engine_api::structures::data_types::{
     built_in_types::{
-        f32::data_type_f32::DataTypeF32, f32be::data_type_f32be::DataTypeF32be, f64::data_type_f64::DataTypeF64, f64be::data_type_f64be::DataTypeF64be,
-        i8::data_type_i8::DataTypeI8, i16::data_type_i16::DataTypeI16, i16be::data_type_i16be::DataTypeI16be, i32::data_type_i32::DataTypeI32,
-        i32be::data_type_i32be::DataTypeI32be, i64::data_type_i64::DataTypeI64, i64be::data_type_i64be::DataTypeI64be, u8::data_type_u8::DataTypeU8,
-        u16::data_type_u16::DataTypeU16, u16be::data_type_u16be::DataTypeU16be, u32::data_type_u32::DataTypeU32, u32be::data_type_u32be::DataTypeU32be,
-        u64::data_type_u64::DataTypeU64, u64be::data_type_u64be::DataTypeU64be,
+        aob::data_type_aob::DataTypeAob, f32::data_type_f32::DataTypeF32, f32be::data_type_f32be::DataTypeF32be, f64::data_type_f64::DataTypeF64,
+        f64be::data_type_f64be::DataTypeF64be, i8::data_type_i8::DataTypeI8, i16::data_type_i16::DataTypeI16, i16be::data_type_i16be::DataTypeI16be,
+        i32::data_type_i32::DataTypeI32, i32be::data_type_i32be::DataTypeI32be, i64::data_type_i64::DataTypeI64, i64be::data_type_i64be::DataTypeI64be,
+        u8::data_type_u8::DataTypeU8, u16::data_type_u16::DataTypeU16, u16be::data_type_u16be::DataTypeU16be, u32::data_type_u32::DataTypeU32,
+        u32be::data_type_u32be::DataTypeU32be, u64::data_type_u64::DataTypeU64, u64be::data_type_u64be::DataTypeU64be,
+        string::utf8::data_type_string_utf8::DataTypeStringUtf8,
     },
     data_type_ref::DataTypeRef,
 };
@@ -25,6 +26,8 @@ pub struct DataTypeSelectorView<'lifetime> {
 }
 
 impl<'lifetime> DataTypeSelectorView<'lifetime> {
+    const MIN_COMBO_WIDTH: f32 = 220.0;
+
     pub fn new(
         app_context: Arc<AppContext>,
         active_data_type: &'lifetime mut DataTypeRef,
@@ -34,7 +37,7 @@ impl<'lifetime> DataTypeSelectorView<'lifetime> {
             app_context,
             active_data_type,
             menu_id,
-            width: 160.0,
+            width: 200.0,
             height: 28.0,
         }
     }
@@ -74,9 +77,9 @@ impl<'lifetime> Widget for DataTypeSelectorView<'lifetime> {
     ) -> Response {
         let theme = &self.app_context.theme;
         let icon_library = &theme.icon_library;
-        let width = self.width;
+        let width = self.width.max(Self::MIN_COMBO_WIDTH);
         let height = self.height;
-        let element_width = 104.0;
+        let element_width = width;
         let data_type_id = self.active_data_type.get_data_type_id();
         let icon = DataTypeToIconConverter::convert_data_type_to_icon(data_type_id, icon_library);
 
@@ -87,336 +90,45 @@ impl<'lifetime> Widget for DataTypeSelectorView<'lifetime> {
             Some(icon),
             |popup_user_interface: &mut Ui, should_close: &mut bool| {
                 popup_user_interface.vertical(|user_interface| {
-                    user_interface.horizontal(|user_interface| {
+                    let mut add_item = |user_interface: &mut Ui, data_type_id: &str| {
                         if user_interface
                             .add(DataTypeItemView::new(
                                 self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU8::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(DataTypeU8::get_data_type_id(), icon_library)),
+                                DataTypeToStringConverter::convert_data_type_to_string(data_type_id),
+                                Some(DataTypeToIconConverter::convert_data_type_to_icon(data_type_id, icon_library)),
                                 element_width,
                             ))
                             .clicked()
                         {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU8::get_data_type_id());
+                            *self.active_data_type = DataTypeRef::new(data_type_id);
                             *should_close = true;
-                        };
+                        }
+                    };
 
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI8::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(DataTypeI8::get_data_type_id(), icon_library)),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI8::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI16::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeI16::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI16::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI16be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeI16be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI16be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI32::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeI32::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI32::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI32be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeI32be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI32be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI64::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeI64::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI64::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeI64be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeI64be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeI64be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU16::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeU16::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU16::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU16be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeU16be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU16be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU32::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeU32::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU32::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU32be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeU32be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU32be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU64::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeU64::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU64::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeU64be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeU64be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeU64be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeF32::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeF32::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeF32::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeF32be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeF32be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeF32be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeF64::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeF64::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeF64::get_data_type_id());
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                DataTypeToStringConverter::convert_data_type_to_string(DataTypeF64be::get_data_type_id()),
-                                Some(DataTypeToIconConverter::convert_data_type_to_icon(
-                                    DataTypeF64be::get_data_type_id(),
-                                    icon_library,
-                                )),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *self.active_data_type = DataTypeRef::new(DataTypeF64be::get_data_type_id());
-                            *should_close = true;
-                        };
-                    });
-
-                    user_interface.horizontal(|user_interface| {
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                "String...",
-                                Some(theme.icon_library.icon_handle_data_type_string.clone()),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *should_close = true;
-                        };
-
-                        if user_interface
-                            .add(DataTypeItemView::new(
-                                self.app_context.clone(),
-                                "Custom...",
-                                Some(
-                                    theme
-                                        .icon_library
-                                        .icon_handle_data_type_purple_blocks_array
-                                        .clone(),
-                                ),
-                                element_width,
-                            ))
-                            .clicked()
-                        {
-                            *should_close = true;
-                        };
-                    });
+                    // CE-style primary types.
+                    add_item(user_interface, DataTypeU8::get_data_type_id());
+                    add_item(user_interface, DataTypeI8::get_data_type_id());
+                    add_item(user_interface, DataTypeU16::get_data_type_id());
+                    add_item(user_interface, DataTypeI16::get_data_type_id());
+                    add_item(user_interface, DataTypeU32::get_data_type_id());
+                    add_item(user_interface, DataTypeI32::get_data_type_id());
+                    add_item(user_interface, DataTypeU64::get_data_type_id());
+                    add_item(user_interface, DataTypeI64::get_data_type_id());
+                    add_item(user_interface, DataTypeF32::get_data_type_id());
+                    add_item(user_interface, DataTypeF64::get_data_type_id());
+                    user_interface.separator();
+                    add_item(user_interface, DataTypeStringUtf8::get_data_type_id());
+                    add_item(user_interface, DataTypeAob::get_data_type_id());
+                    user_interface.separator();
+                    // Big-endian variants (advanced).
+                    add_item(user_interface, DataTypeU16be::get_data_type_id());
+                    add_item(user_interface, DataTypeI16be::get_data_type_id());
+                    add_item(user_interface, DataTypeU32be::get_data_type_id());
+                    add_item(user_interface, DataTypeI32be::get_data_type_id());
+                    add_item(user_interface, DataTypeU64be::get_data_type_id());
+                    add_item(user_interface, DataTypeI64be::get_data_type_id());
+                    add_item(user_interface, DataTypeF32be::get_data_type_id());
+                    add_item(user_interface, DataTypeF64be::get_data_type_id());
                 });
             },
         )

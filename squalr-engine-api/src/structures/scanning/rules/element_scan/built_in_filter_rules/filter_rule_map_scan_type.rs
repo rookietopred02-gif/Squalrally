@@ -14,6 +14,8 @@ use crate::structures::scanning::{
     },
 };
 use crate::structures::snapshots::snapshot_region::SnapshotRegion;
+use crate::structures::data_types::built_in_types::string::utf8::data_type_string_utf8::DataTypeStringUtf8;
+use crate::structures::data_types::built_in_types::aob::data_type_aob::DataTypeAob;
 
 pub struct RuleMapScanType {}
 
@@ -69,6 +71,10 @@ impl ElementScanFilterRule for RuleMapScanType {
         let data_type_size_bytes = symbol_registry.get_unit_size_in_bytes(data_type_ref);
         let is_floating_point = symbol_registry.is_floating_point(data_type_ref);
         let memory_alignment_size = snapshot_filter_element_scan_plan.get_memory_alignment() as u64;
+        let value_length_bytes = snapshot_filter_element_scan_plan.get_data_value().get_size_in_bytes();
+        let data_type_id = data_type_ref.get_data_type_id();
+        let is_byte_array_type =
+            data_type_id == DataTypeStringUtf8::DATA_TYPE_ID || data_type_id == DataTypeAob::DATA_TYPE_ID || value_length_bytes > data_type_size_bytes;
 
         // Decide whether to use a scalar or SIMD scan based on filter region size.
         let vectorization_size = if VectorGenerics::plan_vector_scan::<64>(region_size, data_type_size_bytes, memory_alignment_size).is_valid() {
@@ -110,20 +116,23 @@ impl ElementScanFilterRule for RuleMapScanType {
             snapshot_filter_element_scan_plan.set_planned_scan_type(PlannedScanType::Vector(PlannedScanTypeVector::Aligned, vectorization_size));
         }
 
-        match snapshot_filter_element_scan_plan.get_compare_type() {
-            ScanCompareType::Relative(_) | ScanCompareType::Delta(_) => {}
-            ScanCompareType::Immediate(scan_compare_type_immediate) => {
-                match scan_compare_type_immediate {
-                    ScanCompareTypeImmediate::Equal | ScanCompareTypeImmediate::NotEqual => {
+        if is_byte_array_type {
+            match snapshot_filter_element_scan_plan.get_compare_type() {
+                ScanCompareType::Immediate(scan_compare_type_immediate) => match scan_compare_type_immediate {
+                    ScanCompareTypeImmediate::Equal => {
                         if !is_floating_point {
-                            // Perform a byte array scan, since we were unable to map the byte array to a primitive type.
-                            // These are the only acceptable options, either the type is a primitive, or its a byte array.
-                            snapshot_filter_element_scan_plan.set_planned_scan_type(PlannedScanType::ByteArray(PlannedScanTypeByteArray::ByteArrayBooyerMoore));
+                            snapshot_filter_element_scan_plan
+                                .set_planned_scan_type(PlannedScanType::ByteArray(PlannedScanTypeByteArray::ByteArrayBooyerMoore));
                         }
                     }
-                    _ => {}
+                    _ => {
+                        snapshot_filter_element_scan_plan.set_planned_scan_type(PlannedScanType::Scalar(PlannedScanTypeScalar::ScalarIterative));
+                    }
+                },
+                ScanCompareType::Relative(_) | ScanCompareType::Delta(_) => {
+                    snapshot_filter_element_scan_plan.set_planned_scan_type(PlannedScanType::Scalar(PlannedScanTypeScalar::ScalarIterative));
                 }
-            }
-        };
+            };
+        }
     }
 }

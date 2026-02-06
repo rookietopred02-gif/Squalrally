@@ -1,4 +1,5 @@
 use crate::commands::memory::read::memory_read_response::MemoryReadResponse;
+use crate::commands::memory::regions::memory_regions_response::MemoryRegionsResponse;
 use crate::commands::memory::write::memory_write_response::MemoryWriteResponse;
 use serde::{Deserialize, Serialize};
 
@@ -6,4 +7,5 @@ use serde::{Deserialize, Serialize};
 pub enum MemoryResponse {
     Read { memory_read_response: MemoryReadResponse },
     Write { memory_write_response: MemoryWriteResponse },
+    Regions { memory_regions_response: MemoryRegionsResponse },
 }

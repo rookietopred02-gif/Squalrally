@@ -6,10 +6,13 @@ use squalr_engine_api::structures::processes::opened_process_info::OpenedProcess
 use squalr_engine_api::structures::snapshots::snapshot::Snapshot;
 use squalr_engine_api::structures::snapshots::snapshot_region::SnapshotRegion;
 use squalr_engine_api::structures::tasks::trackable_task::TrackableTask;
+use crate::scan_settings_config::ScanSettingsConfig;
+use squalr_engine_api::structures::settings::scan_thread_priority::ScanThreadPriority;
 use std::sync::Arc;
 use std::sync::RwLock;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Instant;
+use std::time::Duration;
 
 const TASK_NAME: &'static str = "Value Collector";
 
@@ -29,6 +32,7 @@ impl ValueCollectorTask {
         let snapshot = snapshot.clone();
 
         std::thread::spawn(move || {
+            Self::apply_thread_priority(ScanSettingsConfig::get_thread_priority());
             Self::collect_values_task(&task_clone, process_info_clone, snapshot, with_logging);
 
             task_clone.complete();
@@ -47,22 +51,35 @@ impl ValueCollectorTask {
             log::info!("Reading values from memory (process {})...", process_info.get_process_id_raw());
         }
 
-        let mut snapshot = match snapshot.write() {
-            Ok(guard) => guard,
-            Err(error) => {
-                if with_logging {
-                    log::error!("Failed to acquire write lock on snapshot: {}", error);
-                }
+        // Avoid holding the snapshot write-lock for the entire read, which can freeze the UI and block result queries.
+        // We "take" the regions out, process them off-lock, then write them back.
+        let (mut snapshot_regions, total_region_count) = {
+            let mut snapshot_guard = match snapshot.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if with_logging {
+                        log::error!("Failed to acquire write lock on snapshot: {}", error);
+                    }
 
-                return;
-            }
+                    return;
+                }
+            };
+
+            let regions = std::mem::take(snapshot_guard.get_snapshot_regions_mut());
+            let count = regions.len();
+            (regions, count)
         };
 
         let start_time = Instant::now();
         let processed_region_count = Arc::new(AtomicUsize::new(0));
-        let total_region_count = snapshot.get_region_count();
 
-        let snapshot_regions = snapshot.get_snapshot_regions_mut();
+        if with_logging && total_region_count == 0 {
+            log::warn!(
+                "Scan snapshot contains 0 regions for process {}. This usually means no memory pages matched the current Memory settings, or the process could not be queried.",
+                process_info.get_process_id_raw()
+            );
+        }
+
         let cancellation_token = trackable_task.get_cancellation_token();
 
         let read_memory_iterator = |snapshot_region: &mut SnapshotRegion| {
@@ -72,7 +89,9 @@ impl ValueCollectorTask {
 
             // Attempt to read new (or initial) memory values. Ignore failed regions, as these are generally just deallocated pages.
             // JIRA: We probably want some way of tombstoning deallocated pages.
-            let _result = snapshot_region.read_all_memory(&process_info);
+            if snapshot_region.read_all_memory_chunked(&process_info).is_err() {
+                snapshot_region.mark_unreadable();
+            }
 
             // Report progress periodically (not every time for performance)
             let processed = processed_region_count.fetch_add(1, Ordering::SeqCst);
@@ -81,14 +100,40 @@ impl ValueCollectorTask {
                 let progress = (processed as f32 / total_region_count as f32) * 100.0;
                 trackable_task.set_progress(progress);
             }
+
+            if ScanSettingsConfig::get_pause_while_scanning() {
+                std::thread::sleep(Duration::from_millis(1));
+            }
         };
 
         // Collect values for each snapshot region in parallel.
         snapshot_regions.par_iter_mut().for_each(read_memory_iterator);
 
+        // Capture pre-finalization stats (note: set_snapshot_regions discards size==0 regions).
+        let unreadable_region_count = snapshot_regions
+            .iter()
+            .filter(|region| region.get_region_size() == 0)
+            .count();
+        let final_byte_count: u64 = snapshot_regions.iter().map(|r| r.get_region_size()).sum();
+
+        // Write the regions back into the snapshot.
+        {
+            let mut snapshot_guard = match snapshot.write() {
+                Ok(guard) => guard,
+                Err(error) => {
+                    if with_logging {
+                        log::error!("Failed to acquire write lock on snapshot to finalize: {}", error);
+                    }
+                    return;
+                }
+            };
+
+            snapshot_guard.set_snapshot_regions(snapshot_regions);
+        }
+
         if with_logging {
             let duration = start_time.elapsed();
-            let byte_count = snapshot.get_byte_count();
+            let byte_count = final_byte_count;
 
             log::info!("Values collected in: {:?}", duration);
             log::info!(
@@ -96,6 +141,39 @@ impl ValueCollectorTask {
                 byte_count,
                 StorageSizeConversions::value_to_metric_size(byte_count as u128)
             );
+
+            if byte_count == 0 {
+                if total_region_count > 0 && unreadable_region_count == total_region_count {
+                    log::warn!(
+                        "All snapshot regions became unreadable while reading process {}. This often indicates insufficient access rights or a protected process.",
+                        process_info.get_process_id_raw()
+                    );
+                } else if total_region_count > 0 {
+                    log::warn!(
+                        "Snapshot read yielded 0 bytes for process {} (regions={}, unreadable_regions={}).",
+                        process_info.get_process_id_raw(),
+                        total_region_count,
+                        unreadable_region_count
+                    );
+                }
+            }
+        }
+    }
+
+    fn apply_thread_priority(priority: ScanThreadPriority) {
+        #[cfg(windows)]
+        unsafe {
+            use windows_sys::Win32::System::Threading::{
+                GetCurrentThread, SetThreadPriority, THREAD_PRIORITY_ABOVE_NORMAL, THREAD_PRIORITY_HIGHEST, THREAD_PRIORITY_NORMAL,
+            };
+
+            let value = match priority {
+                ScanThreadPriority::Normal => THREAD_PRIORITY_NORMAL,
+                ScanThreadPriority::AboveNormal => THREAD_PRIORITY_ABOVE_NORMAL,
+                ScanThreadPriority::Highest => THREAD_PRIORITY_HIGHEST,
+            };
+
+            let _ = SetThreadPriority(GetCurrentThread(), value);
         }
     }
 }

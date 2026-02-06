@@ -21,9 +21,9 @@ impl ProjectItemType for ProjectItemTypeDirectory {
 
     fn on_activated_changed(
         &self,
-        engine_bindings: &Arc<RwLock<dyn EngineApiPrivilegedBindings>>,
-        registries: &Registries,
-        project_item_ref: &ProjectItemRef,
+        _engine_bindings: &Arc<RwLock<dyn EngineApiPrivilegedBindings>>,
+        _registries: &Registries,
+        _project_item_ref: &ProjectItemRef,
     ) {
         /*
         let is_activated = project_item.get_is_activated();
@@ -36,12 +36,12 @@ impl ProjectItemType for ProjectItemTypeDirectory {
 
     fn tick(
         &self,
-        engine_bindings: &dyn EngineApiPrivilegedBindings,
-        opened_process: &Option<OpenedProcessInfo>,
+        _engine_bindings: &dyn EngineApiPrivilegedBindings,
+        _opened_process: &Option<OpenedProcessInfo>,
         registries: &Registries,
-        project_item_ref: &ProjectItemRef,
+        _project_item_ref: &ProjectItemRef,
     ) {
-        if let Ok(project_item_type_registry) = registries.get_project_item_type_registry().read() {
+        if let Ok(_project_item_type_registry) = registries.get_project_item_type_registry().read() {
             // Recurse the tick call to all child project items.
             /*
             for child in project_item.get_children_mut() {

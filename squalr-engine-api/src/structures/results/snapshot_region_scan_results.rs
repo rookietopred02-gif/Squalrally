@@ -2,7 +2,9 @@ use crate::registries::symbols::symbol_registry::SymbolRegistry;
 use crate::structures::scan_results::scan_result_ref::ScanResultRef;
 use crate::structures::snapshots::snapshot_region::SnapshotRegion;
 use crate::structures::{
-    data_types::data_type_ref::DataTypeRef, scan_results::scan_result_valued::ScanResultValued,
+    data_types::data_type_ref::DataTypeRef,
+    data_values::data_value::DataValue,
+    scan_results::scan_result_valued::ScanResultValued,
     scanning::filters::snapshot_region_filter_collection::SnapshotRegionFilterCollection,
 };
 use std::{cmp::Reverse, collections::BinaryHeap};
@@ -73,8 +75,8 @@ impl SnapshotRegionScanResults {
             let collection = &self.snapshot_region_filter_collections[collection_index];
             let memory_alignment = collection.get_memory_alignment();
             let data_type_ref = collection.get_data_type_ref();
-            let data_type_size = SymbolRegistry::get_instance().get_unit_size_in_bytes(&data_type_ref);
-            let result_count = filter.get_element_count(data_type_size, memory_alignment);
+            let unit_size_in_bytes = collection.get_unit_size_in_bytes();
+            let result_count = filter.get_element_count(unit_size_in_bytes, memory_alignment);
             let symbol_registry = SymbolRegistry::get_instance();
 
             if adjusted_scan_result_index < result_count {
@@ -82,8 +84,32 @@ impl SnapshotRegionScanResults {
                 let scan_result_address = filter
                     .get_base_address()
                     .saturating_add(adjusted_scan_result_index * memory_alignment as u64);
-                let current_value = snapshot_region.get_current_value(scan_result_address, data_type_ref);
-                let previous_value = snapshot_region.get_previous_value(scan_result_address, data_type_ref);
+
+                let read_value = |values: &Vec<u8>| -> Option<DataValue> {
+                    let byte_offset: u64 = scan_result_address.saturating_sub(snapshot_region.get_base_address());
+                    if unit_size_in_bytes == 0 {
+                        return None;
+                    }
+
+                    if byte_offset.saturating_add(unit_size_in_bytes) <= values.len() as u64 {
+                        let start = byte_offset as usize;
+                        let end = start + unit_size_in_bytes as usize;
+                        Some(DataValue::new(data_type_ref.clone(), values[start..end].to_vec()))
+                    } else {
+                        None
+                    }
+                };
+
+                let current_value = if snapshot_region.has_current_values() {
+                    read_value(&snapshot_region.current_values)
+                } else {
+                    None
+                };
+                let previous_value = if snapshot_region.has_previous_values() {
+                    read_value(&snapshot_region.previous_values)
+                } else {
+                    None
+                };
                 let current_display_values = current_value
                     .as_ref()
                     .and_then(|data_value| {

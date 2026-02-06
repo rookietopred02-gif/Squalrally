@@ -96,7 +96,7 @@ impl<'lifetime> Widget for ProjectEntryView<'lifetime> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Handle clicks and double-clicks on the overall area.
         if response.double_clicked() {

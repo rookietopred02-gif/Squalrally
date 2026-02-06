@@ -67,7 +67,7 @@ impl<'a> Widget for ScanCompareTypeItemView<'a> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Draw icon and label inside layout.
         let icon_pos_x = allocated_size_rectangle.min.x + icon_left_padding;

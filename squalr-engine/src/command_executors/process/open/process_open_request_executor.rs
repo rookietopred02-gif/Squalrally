@@ -2,6 +2,9 @@ use crate::command_executors::privileged_request_executor::PrivilegedCommandRequ
 use crate::engine_privileged_state::EnginePrivilegedState;
 use squalr_engine_api::commands::process::open::process_open_request::ProcessOpenRequest;
 use squalr_engine_api::commands::process::open::process_open_response::ProcessOpenResponse;
+use squalr_engine_api::conversions::storage_size_conversions::StorageSizeConversions;
+use squalr_engine_memory::memory_queryer::memory_queryer::MemoryQueryer;
+use squalr_engine_memory::memory_queryer::page_retrieval_mode::PageRetrievalMode;
 use squalr_engine_processes::process_query::process_query_options::ProcessQueryOptions;
 use squalr_engine_processes::process_query::process_queryer::ProcessQuery;
 use std::sync::Arc;
@@ -38,6 +41,31 @@ impl PrivilegedCommandRequestExecutor for ProcessOpenRequest {
                     engine_privileged_state
                         .get_process_manager()
                         .set_opened_process(opened_process_info.clone());
+
+                    // Best-effort sanity check: some protected processes can be opened with limited rights but still
+                    // deny VirtualQueryEx/ReadProcessMemory, which leads to "0 bytes read" and empty scans.
+                    // Emit a clear log message so users can quickly understand what's wrong.
+                    let regions = MemoryQueryer::get_memory_page_bounds(&opened_process_info, PageRetrievalMode::FromSettings);
+                    let total_bytes: u64 = regions.iter().map(|r| r.get_region_size()).sum();
+                    if regions.is_empty() || total_bytes == 0 {
+                        let fallback_regions = MemoryQueryer::get_memory_page_bounds(&opened_process_info, PageRetrievalMode::FromUserMode);
+                        let fallback_bytes: u64 = fallback_regions.iter().map(|r| r.get_region_size()).sum();
+                        if fallback_regions.is_empty() || fallback_bytes == 0 {
+                            log::warn!(
+                                "Opened '{}' (pid {}) but could not enumerate any scannable memory regions. This is usually due to insufficient access rights (try running Squalr as Administrator) or a protected/packaged process.",
+                                opened_process_info.get_name(),
+                                opened_process_info.get_process_id_raw()
+                            );
+                        } else {
+                            log::warn!(
+                                "Opened '{}' (pid {}) but current Memory settings yielded 0 scannable regions. Usrmde fallback would scan {} across {} regions.",
+                                opened_process_info.get_name(),
+                                opened_process_info.get_process_id_raw(),
+                                StorageSizeConversions::value_to_metric_size(fallback_bytes as u128),
+                                fallback_regions.len()
+                            );
+                        }
+                    }
 
                     return ProcessOpenResponse {
                         opened_process_info: Some(opened_process_info),

@@ -45,9 +45,30 @@ impl AnonymousScanConstraint {
         let symbol_registry = SymbolRegistry::get_instance();
 
         if let Some(anonymous_value_string) = &self.anonymous_value_string {
-            match symbol_registry.deanonymize_value_string(&data_type_ref, &anonymous_value_string) {
-                Ok(data_value) => return Some(ScanConstraint::new(self.scan_compare_type, data_value, floating_point_tolerance)),
-                Err(error) => log::error!("Unable to parse value in anonymous constraint: {}", error),
+            if !anonymous_value_string.get_anonymous_value_string().trim().is_empty() {
+                match symbol_registry.deanonymize_value_string(&data_type_ref, &anonymous_value_string) {
+                    Ok(data_value) => return Some(ScanConstraint::new(self.scan_compare_type, data_value, floating_point_tolerance)),
+                    Err(error) => {
+                        let default_format = symbol_registry.get_default_anonymous_value_string_format(data_type_ref);
+                        let mut fallback_value = anonymous_value_string.clone();
+
+                        if fallback_value.get_anonymous_value_string_format() != default_format {
+                            fallback_value.set_anonymous_value_string_format(default_format);
+
+                            if let Ok(data_value) = symbol_registry.deanonymize_value_string(&data_type_ref, &fallback_value) {
+                                return Some(ScanConstraint::new(self.scan_compare_type, data_value, floating_point_tolerance));
+                            }
+                        }
+
+                        log::error!("Unable to parse value in anonymous constraint: {}", error);
+                    }
+                }
+            }
+        }
+
+        if matches!(self.scan_compare_type, ScanCompareType::Relative(_)) {
+            if let Some(data_value) = symbol_registry.get_default_value(data_type_ref) {
+                return Some(ScanConstraint::new(self.scan_compare_type, data_value, floating_point_tolerance));
             }
         }
 

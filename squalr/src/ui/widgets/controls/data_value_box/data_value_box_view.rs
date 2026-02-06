@@ -153,7 +153,7 @@ impl<'lifetime> Widget for DataValueBoxView<'lifetime> {
             border_color: theme.submenu_border,
             border_color_focused: theme.focused_border,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Define editable region (between left label and dropdown divider).
         let text_edit_rectangle = Rect::from_min_max(

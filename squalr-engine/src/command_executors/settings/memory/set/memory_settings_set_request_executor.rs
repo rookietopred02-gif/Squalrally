@@ -52,6 +52,18 @@ impl PrivilegedCommandRequestExecutor for MemorySettingsSetRequest {
             MemorySettingsConfig::set_excluded_copy_on_write(excluded_copy_on_write);
         }
 
+        if let Some(excluded_no_cache) = self.excluded_no_cache {
+            MemorySettingsConfig::set_excluded_no_cache(excluded_no_cache);
+        }
+
+        if let Some(excluded_write_combine) = self.excluded_write_combine {
+            MemorySettingsConfig::set_excluded_write_combine(excluded_write_combine);
+        }
+
+        if let Some(only_main_module_image) = self.only_main_module_image {
+            MemorySettingsConfig::set_only_main_module_image(only_main_module_image);
+        }
+
         if let Some(start_address) = self.start_address {
             MemorySettingsConfig::set_start_address(start_address);
         }

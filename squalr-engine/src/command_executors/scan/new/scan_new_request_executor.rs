@@ -4,6 +4,7 @@ use squalr_engine_api::commands::scan::new::scan_new_request::ScanNewRequest;
 use squalr_engine_api::commands::scan::new::scan_new_response::ScanNewResponse;
 use squalr_engine_api::events::scan_results::updated::scan_results_updated_event::ScanResultsUpdatedEvent;
 use squalr_engine_api::structures::snapshots::snapshot_region::SnapshotRegion;
+use squalr_engine_scanning::scan_settings_config::ScanSettingsConfig;
 use squalr_engine_memory::memory_queryer::memory_queryer::MemoryQueryer;
 use squalr_engine_memory::memory_queryer::page_retrieval_mode::PageRetrievalMode;
 use std::sync::Arc;
@@ -50,7 +51,53 @@ impl PrivilegedCommandRequestExecutor for ScanNewRequest {
         freeze_list_registry_guard.clear();
 
         // Query all memory pages for the process from the OS.
-        let memory_pages = MemoryQueryer::get_memory_page_bounds(&opened_process_info, PageRetrievalMode::FromSettings);
+        let mut memory_pages = MemoryQueryer::get_memory_page_bounds(&opened_process_info, PageRetrievalMode::FromSettings);
+        if let Some(last_digit) = ScanSettingsConfig::get_fast_scan_last_digits() {
+            memory_pages = memory_pages
+                .into_iter()
+                .filter_map(|mut region| {
+                    let base = region.get_base_address();
+                    let end = region.get_end_address();
+                    let offset = ((last_digit as i64 - (base as i64 & 0xF)) + 16) % 16;
+                    let new_base = base.saturating_add(offset as u64);
+                    if new_base >= end {
+                        return None;
+                    }
+
+                    region.set_base_address(new_base);
+                    region.set_end_address(end);
+                    Some(region)
+                })
+                .collect();
+        }
+        if memory_pages.is_empty() {
+            log::warn!("No memory pages matched current settings. Falling back to usermode pages.");
+            memory_pages = MemoryQueryer::get_memory_page_bounds(&opened_process_info, PageRetrievalMode::FromUserMode);
+            if let Some(last_digit) = ScanSettingsConfig::get_fast_scan_last_digits() {
+                memory_pages = memory_pages
+                    .into_iter()
+                    .filter_map(|mut region| {
+                        let base = region.get_base_address();
+                        let end = region.get_end_address();
+                        let offset = ((last_digit as i64 - (base as i64 & 0xF)) + 16) % 16;
+                        let new_base = base.saturating_add(offset as u64);
+                        if new_base >= end {
+                            return None;
+                        }
+
+                        region.set_base_address(new_base);
+                        region.set_end_address(end);
+                        Some(region)
+                    })
+                    .collect();
+            }
+        }
+
+        if memory_pages.is_empty() {
+            snapshot.set_snapshot_regions(vec![]);
+            engine_privileged_state.emit_event(ScanResultsUpdatedEvent { is_new_scan: true });
+            return ScanNewResponse {};
+        }
 
         // Attempt to merge any adjacent regions. This drastically simplifies the scanning process by eliminating edge case handling.
         // Additionally, we must track the page boundaries at which the merge took place.

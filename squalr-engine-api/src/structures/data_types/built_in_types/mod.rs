@@ -1,5 +1,6 @@
 pub mod bool32;
 pub mod bool8;
+pub mod aob;
 pub mod f32;
 pub mod f32be;
 pub mod f64;

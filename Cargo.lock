@@ -3204,6 +3204,15 @@ dependencies = [
 ]
 
 [[package]]
+name = "iced-x86"
+version = "1.21.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c447cff8c7f384a7d4f741cfcff32f75f3ad02b406432e8d6c878d56b1edf6b"
+dependencies = [
+ "lazy_static",
+]
+
+[[package]]
 name = "icu_collections"
 version = "2.0.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -5513,6 +5522,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6c20b6793b5c2fa6553b250154b78d6d0db37e72700ae35fad9387a46f487c97"
 
 [[package]]
+name = "rustc-demangle"
+version = "0.1.27"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "b50b8869d9fc858ce7266cce0194bd74df58b9d0e3f6df3a9fc8eb470d95c09d"
+
+[[package]]
 name = "rustc-hash"
 version = "1.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -6043,7 +6058,7 @@ dependencies = [
 
 [[package]]
 name = "squalr"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "arc-swap",
  "bus",
@@ -6051,21 +6066,24 @@ dependencies = [
  "eframe",
  "env_logger",
  "epaint",
+ "iced-x86",
  "image",
  "log",
  "rodio",
+ "rustc-demangle",
  "serde",
  "serde_json",
  "smallvec",
  "squalr-engine",
  "squalr-engine-api",
  "wasm-bindgen",
+ "windows-sys 0.61.1",
  "winresource",
 ]
 
 [[package]]
 name = "squalr-android"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "futures",
  "log",
@@ -6083,7 +6101,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-cli"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "crossbeam-channel",
  "futures",
@@ -6098,7 +6116,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-engine"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "anyhow",
  "bincode 1.3.3",
@@ -6129,6 +6147,7 @@ dependencies = [
  "url",
  "urlencoding",
  "uuid",
+ "windows-sys 0.59.0",
  "zip",
 ]
 
@@ -6162,21 +6181,21 @@ dependencies = [
 
 [[package]]
 name = "squalr-engine-architecture"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "log",
 ]
 
 [[package]]
 name = "squalr-engine-debuggers"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "squalr-engine-api",
 ]
 
 [[package]]
 name = "squalr-engine-memory"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "bitflags 2.9.4",
  "libc",
@@ -6190,7 +6209,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-engine-processes"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "image",
  "log",
@@ -6206,7 +6225,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-engine-projects"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "anyhow",
  "log",
@@ -6217,7 +6236,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-engine-scanning"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "bitflags 2.9.4",
  "bytemuck",
@@ -6232,11 +6251,12 @@ dependencies = [
  "squalr-engine-api",
  "squalr-engine-memory",
  "sysinfo",
+ "windows-sys 0.59.0",
 ]
 
 [[package]]
 name = "squalr-engine-scripting"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "squalr-engine-architecture",
  "squalr-engine-debuggers",
@@ -6247,7 +6267,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-installer"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "log",
  "slint",
@@ -6258,7 +6278,7 @@ dependencies = [
 
 [[package]]
 name = "squalr-tui"
-version = "0.1.1"
+version = "4.0.0"
 dependencies = [
  "crossbeam-channel",
  "futures",

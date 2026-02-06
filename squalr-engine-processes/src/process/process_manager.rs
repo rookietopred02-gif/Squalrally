@@ -34,7 +34,14 @@ impl ProcessManager {
         &self,
         process_info: OpenedProcessInfo,
     ) {
+        // Always close the previously opened process handle to avoid leaking handles.
         if let Ok(mut process) = self.opened_process.write() {
+            if let Some(previous) = process.as_ref() {
+                if previous.get_handle() != 0 {
+                    let _ = ProcessQuery::close_process(previous.get_handle());
+                }
+            }
+
             log::info!("Opened process: {}, pid: {}", process_info.get_name(), process_info.get_process_id());
             *process = Some(process_info.clone());
 
@@ -50,6 +57,12 @@ impl ProcessManager {
     /// Clears the process to which we are currently attached.
     pub fn clear_opened_process(&self) {
         if let Ok(mut process) = self.opened_process.write() {
+            if let Some(previous) = process.as_ref() {
+                if previous.get_handle() != 0 {
+                    let _ = ProcessQuery::close_process(previous.get_handle());
+                }
+            }
+
             *process = None;
 
             log::info!("Process closed.");
@@ -109,6 +122,12 @@ impl ProcessManager {
 
                 if processes.len() <= 0 {
                     if let Ok(mut opened_process) = opened_process.write() {
+                        if let Some(previous) = opened_process.as_ref() {
+                            if previous.get_handle() != 0 {
+                                let _ = ProcessQuery::close_process(previous.get_handle());
+                            }
+                        }
+
                         *opened_process = None;
                         log::info!("Process no longer open, detaching.");
                         (event_emitter)(ProcessChangedEvent { process_info: None }.to_engine_event());

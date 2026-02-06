@@ -21,19 +21,11 @@ impl PrivilegedCommandRequestExecutor for ScanCollectValuesRequest {
             let snapshot = engine_privileged_state.get_snapshot();
             let task = ValueCollectorTask::start_task(process_info.clone(), snapshot, true);
             let task_handle = task.get_task_handle();
-            let progress_receiver = task.subscribe_to_progress_updates();
             let engine_privileged_state = engine_privileged_state.clone();
 
             engine_privileged_state
                 .get_trackable_task_manager()
                 .register_task(task.clone());
-
-            // Spawn a thread to listen to progress updates
-            thread::spawn(move || {
-                while let Ok(progress) = progress_receiver.recv() {
-                    log::info!("Progress: {:.2}%", progress);
-                }
-            });
 
             thread::spawn(move || {
                 task.wait_for_completion();

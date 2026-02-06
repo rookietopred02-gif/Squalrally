@@ -11,12 +11,14 @@ use std::collections::HashMap;
 use std::sync::atomic::AtomicBool;
 use std::sync::atomic::Ordering;
 use std::sync::{Mutex, RwLock};
-use sysinfo::Pid;
-use windows_sys::Win32::Foundation::{BOOL, CloseHandle, HANDLE, HWND, LPARAM};
+use sysinfo::{Pid, ProcessRefreshKind, ProcessesToUpdate};
+use windows_sys::Win32::Foundation::{BOOL, CloseHandle, GetLastError, HANDLE, HWND, LPARAM, ERROR_ACCESS_DENIED};
 use windows_sys::Win32::Graphics::Gdi::{BITMAPINFO, BITMAPINFOHEADER, DIB_RGB_COLORS, GetDC, GetDIBits};
 use windows_sys::Win32::System::ProcessStatus::K32GetModuleFileNameExW;
 use windows_sys::Win32::System::Threading::{IsWow64Process, IsWow64Process2};
-use windows_sys::Win32::System::Threading::{OpenProcess, PROCESS_ALL_ACCESS, PROCESS_QUERY_INFORMATION, PROCESS_VM_READ};
+use windows_sys::Win32::System::Threading::{
+    OpenProcess, PROCESS_QUERY_INFORMATION, PROCESS_QUERY_LIMITED_INFORMATION, PROCESS_VM_OPERATION, PROCESS_VM_READ, PROCESS_VM_WRITE,
+};
 use windows_sys::Win32::UI::Shell::ExtractIconW;
 use windows_sys::Win32::UI::WindowsAndMessaging::{EnumWindows, IsWindowVisible};
 use windows_sys::Win32::UI::WindowsAndMessaging::{GetIconInfo, ICONINFO};
@@ -214,9 +216,39 @@ impl ProcessQueryer for WindowsProcessQuery {
 
     fn open_process(process_info: &ProcessInfo) -> Result<OpenedProcessInfo, String> {
         unsafe {
-            let handle: HANDLE = OpenProcess(PROCESS_ALL_ACCESS, 0, process_info.get_process_id_raw());
+            // Prefer the minimal set of permissions needed for scanning/writing to reduce "access denied"
+            // compared to PROCESS_ALL_ACCESS, which many processes disallow unless elevated.
+            let full_access = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ | PROCESS_VM_WRITE | PROCESS_VM_OPERATION;
+            let mut handle: HANDLE = OpenProcess(full_access, 0, process_info.get_process_id_raw());
+
             if handle == std::ptr::null_mut() {
-                Err("Failed to open process".to_string())
+                let error = GetLastError();
+                if error == ERROR_ACCESS_DENIED {
+                    // Retry with read-only permissions for protected processes.
+                    let read_only_access = PROCESS_QUERY_INFORMATION | PROCESS_VM_READ;
+                    handle = OpenProcess(read_only_access, 0, process_info.get_process_id_raw());
+                }
+            }
+
+            if handle == std::ptr::null_mut() {
+                let error = GetLastError();
+                if error == ERROR_ACCESS_DENIED {
+                    // Retry with limited query permissions for protected/packaged processes.
+                    let limited_access = PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_VM_READ;
+                    handle = OpenProcess(limited_access, 0, process_info.get_process_id_raw());
+                }
+            }
+
+            if handle == std::ptr::null_mut() {
+                let error = GetLastError();
+                if error == ERROR_ACCESS_DENIED {
+                    Err(format!(
+                        "Failed to open process (access denied). Try running Squalr as Administrator. (error={})",
+                        error
+                    ))
+                } else {
+                    Err(format!("Failed to open process. (error={})", error))
+                }
             } else {
                 let opened_process_info = OpenedProcessInfo::new(
                     process_info.get_process_id_raw(),
@@ -251,13 +283,15 @@ impl ProcessQueryer for WindowsProcessQuery {
         };
 
         let system = process_monitor_guard.get_system();
-        let system_guard = match system.read() {
+        let mut system_guard = match system.write() {
             Ok(guard) => guard,
             Err(error) => {
-                log::error!("Failed to acquire system read lock: {}", error);
+                log::error!("Failed to acquire system write lock: {}", error);
                 return Vec::new();
             }
         };
+
+        system_guard.refresh_processes_specifics(ProcessesToUpdate::All, true, ProcessRefreshKind::everything());
 
         // Process and filter in a single pass, using cache when possible
         let filtered_processes: Vec<ProcessInfo> = system_guard
@@ -265,7 +299,7 @@ impl ProcessQueryer for WindowsProcessQuery {
             .iter()
             .filter_map(|(process_id, process)| {
                 // Try to get from cache first
-                let process_info = if let Some(cached_info) = Self::get_from_cache(process_id) {
+                let mut process_info = if let Some(cached_info) = Self::get_from_cache(process_id) {
                     // If icons are required but not in cache, update the icon
                     if process_query_options.fetch_icons && cached_info.get_icon().is_none() {
                         let mut updated_info = cached_info.clone();
@@ -302,6 +336,19 @@ impl ProcessQueryer for WindowsProcessQuery {
                     );
                     new_info
                 };
+
+                if process_query_options.require_windowed && !process_info.get_is_windowed() {
+                    let is_windowed = Self::is_process_windowed(process_id);
+                    if is_windowed {
+                        process_info.set_is_windowed(true);
+                        Self::update_cache(
+                            *process_id,
+                            process_info.get_name().to_string(),
+                            true,
+                            process_info.get_icon().clone(),
+                        );
+                    }
+                }
 
                 let mut matches = true;
 

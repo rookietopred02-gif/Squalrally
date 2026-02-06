@@ -12,6 +12,8 @@ use structopt::StructOpt;
 pub struct ScanResultsQueryRequest {
     #[structopt(short = "p", long)]
     pub page_index: u64,
+    #[structopt(long)]
+    pub page_size: Option<u32>,
 }
 
 impl PrivilegedCommandRequest for ScanResultsQueryRequest {

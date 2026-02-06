@@ -6,6 +6,7 @@ use crate::events::engine_event::EngineEventRequest;
 use crate::events::process::process_event::ProcessEvent;
 use crate::events::project::project_event::ProjectEvent;
 use crate::events::project_items::project_items_event::ProjectItemsEvent;
+use crate::events::pointer_scan_results::pointer_scan_results_event::PointerScanResultsEvent;
 use crate::events::scan_results::scan_results_event::ScanResultsEvent;
 use crate::events::trackable_task::trackable_task_event::TrackableTaskEvent;
 use crate::structures::projects::project_manager::ProjectManager;
@@ -165,6 +166,11 @@ impl EngineUnprivilegedState {
             EngineEvent::ScanResults(process_event) => match process_event {
                 ScanResultsEvent::ScanResultsUpdated { scan_results_updated_event } => {
                     Self::dispatch_engine_event(&event_listeners, scan_results_updated_event);
+                }
+            },
+            EngineEvent::PointerScanResults(pointer_scan_results_event) => match pointer_scan_results_event {
+                PointerScanResultsEvent::PointerScanResultsUpdated { pointer_scan_results_updated_event } => {
+                    Self::dispatch_engine_event(&event_listeners, pointer_scan_results_updated_event);
                 }
             },
             EngineEvent::TrackableTask(trackable_task_event) => match trackable_task_event {

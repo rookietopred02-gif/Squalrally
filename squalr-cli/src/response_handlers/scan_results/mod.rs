@@ -6,5 +6,6 @@ use squalr_engine_api::commands::scan_results::scan_results_response::ScanResult
 pub fn handle_scan_results_response(cmd: ScanResultsResponse) {
     match cmd {
         ScanResultsResponse::List { scan_results_list_response } => handle_scan_results_list_response(scan_results_list_response),
+        _ => {}
     }
 }

@@ -4,6 +4,7 @@ use crate::commands::project::project_response::ProjectResponse;
 use crate::commands::project_items::project_items_response::ProjectItemsResponse;
 use crate::commands::scan::scan_response::ScanResponse;
 use crate::commands::scan_results::scan_results_response::ScanResultsResponse;
+use crate::commands::pointer_scan_results::pointer_scan_results_response::PointerScanResultsResponse;
 use crate::commands::settings::settings_response::SettingsResponse;
 use crate::commands::trackable_tasks::trackable_tasks_response::TrackableTasksResponse;
 use serde::{Deserialize, Serialize};
@@ -13,6 +14,7 @@ pub enum PrivilegedCommandResponse {
     Memory(MemoryResponse),
     Process(ProcessResponse),
     Results(ScanResultsResponse),
+    PointerScanResults(PointerScanResultsResponse),
     Project(ProjectResponse),
     ProjectItems(ProjectItemsResponse),
     Scan(ScanResponse),

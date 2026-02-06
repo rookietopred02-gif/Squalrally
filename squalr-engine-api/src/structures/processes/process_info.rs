@@ -41,6 +41,13 @@ impl ProcessInfo {
         self.is_windowed
     }
 
+    pub fn set_is_windowed(
+        &mut self,
+        is_windowed: bool,
+    ) {
+        self.is_windowed = is_windowed;
+    }
+
     pub fn get_icon(&self) -> &Option<ProcessIcon> {
         &self.icon
     }

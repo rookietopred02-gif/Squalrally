@@ -9,7 +9,7 @@ pub struct PrimitiveDataTypeString {}
 
 impl PrimitiveDataTypeString {
     pub fn get_supported_anonymous_value_string_formats() -> Vec<AnonymousValueStringFormat> {
-        vec![AnonymousValueStringFormat::String]
+        vec![AnonymousValueStringFormat::String, AnonymousValueStringFormat::Hexadecimal]
     }
 
     pub fn deanonymize_string<F>(
@@ -28,7 +28,13 @@ impl PrimitiveDataTypeString {
                 .map_err(|error: ConversionError| DataTypeError::ParseError(error.to_string()))?,
             // For normal strings, we decode into the appropriate provided encoding.
             AnonymousValueStringFormat::String => decode_string_func(anonymous_value_string.get_anonymous_value_string()),
-            _ => return Err(DataTypeError::ParseError("Unsupported data value format".to_string())),
+            // Treat decimal input as a raw string to avoid hard failures when UI format mismatches.
+            AnonymousValueStringFormat::Decimal => decode_string_func(anonymous_value_string.get_anonymous_value_string()),
+            // Treat non-string formats as raw strings to avoid unsupported-format failures.
+            AnonymousValueStringFormat::Address
+            | AnonymousValueStringFormat::DataTypeRef
+            | AnonymousValueStringFormat::Enumeration
+            | AnonymousValueStringFormat::Bool => decode_string_func(anonymous_value_string.get_anonymous_value_string()),
         };
 
         Ok(bytes)

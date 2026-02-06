@@ -3,6 +3,7 @@ use crate::dependency_injection::dependency::Dependency;
 use anyhow::{Result, anyhow};
 use arc_swap::ArcSwap;
 use std::any::{Any, type_name};
+use std::collections::hash_map::Entry;
 use std::collections::{HashMap, HashSet};
 use std::sync::{Arc, RwLock};
 
@@ -35,9 +36,27 @@ impl DependencyContainer {
         // Store ready callbacks.
         let ready_callbacks = match self.inner.write() {
             Ok(mut container) => {
-                container
-                    .services
-                    .insert(key, Arc::new(ArcSwap::new(Arc::new(instance))));
+                match container.services.entry(key) {
+                    Entry::Occupied(mut entry) => {
+                        // Preserve the existing ArcSwap so previously-resolved dependencies stay wired up.
+                        let existing = Arc::clone(entry.get());
+                        match Arc::downcast::<ArcSwap<T>>(existing) {
+                            Ok(existing_arc_swap) => {
+                                existing_arc_swap.store(Arc::new(instance));
+                            }
+                            Err(_) => {
+                                // Type mismatch: replace the stored service.
+                                log::error!("DependencyContainer::register type mismatch for {} (replacing).", type_name::<T>());
+                                // NOTE: We intentionally replace the stored value here because the previous value
+                                // could not be downcast to ArcSwap<T>.
+                                entry.insert(Arc::new(ArcSwap::new(Arc::new(instance))));
+                            }
+                        }
+                    }
+                    Entry::Vacant(entry) => {
+                        entry.insert(Arc::new(ArcSwap::new(Arc::new(instance))));
+                    }
+                }
                 container.collect_ready_callbacks()
             }
             Err(error) => {

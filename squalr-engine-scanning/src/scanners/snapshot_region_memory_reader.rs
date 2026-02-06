@@ -1,10 +1,8 @@
-use std::sync::atomic::{AtomicBool, Ordering};
-
 use squalr_engine_api::structures::processes::opened_process_info::OpenedProcessInfo;
 use squalr_engine_api::structures::snapshots::snapshot_region::SnapshotRegion;
 use squalr_engine_memory::memory_reader::MemoryReader;
 use squalr_engine_memory::memory_reader::memory_reader_trait::IMemoryReader;
-use rayon::iter::{IntoParallelIterator, ParallelIterator};
+use crate::scan_settings_config::ScanSettingsConfig;
 
 pub trait SnapshotRegionMemoryReader {
     fn read_all_memory(
@@ -38,7 +36,10 @@ impl SnapshotRegionMemoryReader for SnapshotRegion {
 
         if self.page_boundaries.is_empty() {
             // If this snapshot is part of a standalone memory page, just read the regions as normal.
-            MemoryReader::get_instance().read_bytes(&process_info, self.get_base_address(), &mut self.current_values);
+            let success = MemoryReader::get_instance().read_bytes(&process_info, self.get_base_address(), &mut self.current_values);
+            if !success {
+                return Err("Failed to read memory region".to_string());
+            }
         } else {
             // Otherwise, this snapshot is a merging of two or more OS regions, and special care is taken to separate the read calls.
             // This prevents the case where one page deallocates, causing the read for both to fail.
@@ -67,18 +68,21 @@ impl SnapshotRegionMemoryReader for SnapshotRegion {
                 read_ranges.push((next_range_start_address, current_slice));
             }
 
-            // And finally parallel read using the obtained non-overlapping mutable slices.
-            let read_failures = read_ranges
-                .into_par_iter()
-                .map(|(address, buffer)| {
-                    let success = MemoryReader::get_instance().read_bytes(process_info, address, buffer);
+            let total_ranges = read_ranges.len();
+            let mut read_failures = Vec::new();
+            for (address, buffer) in read_ranges {
+                let success = MemoryReader::get_instance().read_bytes(process_info, address, buffer);
+                if !success {
+                    read_failures.push(address);
+                }
+            }
 
-                    if success { None } else { Some(address) }
-                })
-                .filter_map(|result| result)
-                .collect::<Vec<_>>();
-
+            let failure_count = read_failures.len();
             self.page_boundary_tombstones.extend(read_failures);
+
+            if total_ranges > 0 && failure_count >= total_ranges {
+                return Err("Failed to read memory region".to_string());
+            }
         }
 
         Ok(())
@@ -90,7 +94,12 @@ impl SnapshotRegionMemoryReader for SnapshotRegion {
         &mut self,
         process_info: &OpenedProcessInfo,
     ) -> Result<(), String> {
-        const CHUNK_SIZE: usize = 16 * 1024;
+        let mut chunk_size = (ScanSettingsConfig::get_scan_buffer_kb() as usize).saturating_mul(1024);
+        if chunk_size < 1024 {
+            chunk_size = 1024;
+        } else if chunk_size > 16 * 1024 * 1024 {
+            chunk_size = 16 * 1024 * 1024;
+        }
         let region_size = self.get_region_size() as usize;
         let base_address = self.get_base_address();
 
@@ -106,24 +115,26 @@ impl SnapshotRegionMemoryReader for SnapshotRegion {
         }
 
         if self.page_boundaries.is_empty() {
-            let has_any_failed = AtomicBool::new(false);
+            // If this snapshot is part of a standalone memory page, read in chunks to avoid large single reads.
+            let total_chunks = (self.current_values.len().saturating_add(chunk_size).saturating_sub(1)).saturating_div(chunk_size);
+            // Reading sequentially keeps UI responsive on large scans and avoids excessive Rayon task overhead.
+            let mut failures = Vec::new();
 
-            // If this snapshot is part of a standalone memory page, just read the regions as normal.
-            self.current_values
-                .chunks_mut(CHUNK_SIZE)
-                .enumerate()
-                .collect::<Vec<_>>() // force eager collection for par_iter
-                .into_par_iter()
-                .for_each(|(chunk_index, chunk)| {
-                    if !has_any_failed.load(Ordering::Acquire) {
-                        let address = base_address + chunk_index as u64 * CHUNK_SIZE as u64;
-                        let success = MemoryReader::get_instance().read_bytes(process_info, address, chunk);
+            for (chunk_index, chunk) in self.current_values.chunks_mut(chunk_size).enumerate() {
+                let address = base_address + chunk_index as u64 * chunk_size as u64;
+                let success = MemoryReader::get_instance().read_bytes(process_info, address, chunk);
 
-                        if !success {
-                            has_any_failed.store(true, Ordering::Release);
-                        }
-                    }
-                });
+                if !success {
+                    failures.push(address);
+                }
+            }
+
+            let failure_count = failures.len();
+            self.page_boundary_tombstones.extend(failures);
+
+            if total_chunks > 0 && failure_count >= total_chunks {
+                return Err("Failed to read memory region".to_string());
+            }
         } else {
             // Otherwise, this snapshot is a merging of two or more OS regions, and special care is taken to separate the read calls.
             // This prevents the case where one page deallocates, causing the read for both to fail.
@@ -138,10 +149,10 @@ impl SnapshotRegionMemoryReader for SnapshotRegion {
                 let (slice, remaining) = current_slice.split_at_mut(range_size);
 
                 slice
-                    .chunks_mut(CHUNK_SIZE)
+                    .chunks_mut(chunk_size)
                     .enumerate()
                     .for_each(|(index, chunk)| {
-                        let offset = index as u64 * CHUNK_SIZE as u64;
+                        let offset = index as u64 * chunk_size as u64;
                         read_ranges.push((next_address.saturating_add(offset), chunk));
                     });
 
@@ -151,34 +162,29 @@ impl SnapshotRegionMemoryReader for SnapshotRegion {
 
             // Final segment after last boundary.
             current_slice
-                .chunks_mut(CHUNK_SIZE)
+                .chunks_mut(chunk_size)
                 .enumerate()
                 .for_each(|(chunk_index, chunk)| {
-                    let offset = chunk_index as u64 * CHUNK_SIZE as u64;
+                    let offset = chunk_index as u64 * chunk_size as u64;
                     read_ranges.push((next_address.saturating_add(offset), chunk));
                 });
 
-            let has_failed = AtomicBool::new(false);
+            let total_ranges = read_ranges.len();
+            let mut read_failures = Vec::new();
 
-            // And finally parallel read using the obtained non-overlapping mutable slices.
-            let read_failures = read_ranges
-                .into_par_iter()
-                .filter_map(|(address, chunk)| {
-                    if has_failed.load(Ordering::Acquire) {
-                        return None;
-                    }
+            for (address, chunk) in read_ranges {
+                let success = MemoryReader::get_instance().read_bytes(process_info, address, chunk);
+                if !success {
+                    read_failures.push(address);
+                }
+            }
 
-                    let success = MemoryReader::get_instance().read_bytes(process_info, address, chunk);
-
-                    if !success {
-                        has_failed.store(true, Ordering::Release);
-                    }
-
-                    if success { None } else { Some(address) }
-                })
-                .collect::<Vec<_>>();
-
+            let failure_count = read_failures.len();
             self.page_boundary_tombstones.extend(read_failures);
+
+            if total_ranges > 0 && failure_count >= total_ranges {
+                return Err("Failed to read memory region".to_string());
+            }
         }
 
         Ok(())

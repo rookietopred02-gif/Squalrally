@@ -2,7 +2,11 @@ use crate::models::docking::builder::dock_builder::DockBuilder;
 use crate::models::docking::hierarchy::dock_node::DockNode;
 use crate::models::docking::hierarchy::types::dock_split_direction::DockSplitDirection;
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+use crate::views::disassembler::disassembler_view::DisassemblerView;
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 use crate::views::element_scanner::scanner::element_scanner_view::ElementScannerView;
+#[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+use crate::views::memory_viewer::memory_viewer_view::MemoryViewerView;
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
 use crate::views::output::output_view::OutputView;
 #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
@@ -59,6 +63,8 @@ impl DockSettingsConfig {
                 0.4,
                 DockBuilder::tab_node(ElementScannerView::WINDOW_ID)
                     .push_tab(DockBuilder::window(ElementScannerView::WINDOW_ID))
+                    .push_tab(DockBuilder::window(DisassemblerView::WINDOW_ID))
+                    .push_tab(DockBuilder::window(MemoryViewerView::WINDOW_ID))
                     .push_tab(DockBuilder::window(PointerScannerView::WINDOW_ID))
                     .push_tab(DockBuilder::window(SettingsView::WINDOW_ID)),
             )
@@ -88,6 +94,58 @@ impl DockSettingsConfig {
 
         default_layout
     }
+
+    /// Ensures newly-added windows are reachable for existing users by inserting any missing window IDs into the main tab group.
+    #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+    pub fn migrate_layout(dock_root: &mut DockNode) -> bool {
+        let required_windows = [
+            ProcessSelectorView::WINDOW_ID,
+            ProjectExplorerView::WINDOW_ID,
+            StructViewerView::WINDOW_ID,
+            OutputView::WINDOW_ID,
+            ElementScannerView::WINDOW_ID,
+            PointerScannerView::WINDOW_ID,
+            SettingsView::WINDOW_ID,
+            DisassemblerView::WINDOW_ID,
+            MemoryViewerView::WINDOW_ID,
+        ];
+
+        // Prefer inserting into the scanner/settings tab group so features show up where users expect (right-side tools).
+        let anchor_candidates = [
+            ElementScannerView::WINDOW_ID,
+            PointerScannerView::WINDOW_ID,
+            SettingsView::WINDOW_ID,
+        ];
+
+        let anchor_path = anchor_candidates
+            .iter()
+            .find_map(|window_id| dock_root.find_path_to_window_id(window_id));
+
+        // If the layout is invalid (missing even core windows), replace with the default layout.
+        let Some(anchor_path) = anchor_path else {
+            *dock_root = Self::get_default_layout();
+            return true;
+        };
+
+        let mut changed = false;
+
+        for window_id in required_windows {
+            if dock_root.find_path_to_window_id(window_id).is_some() {
+                continue;
+            }
+
+            let new_node = DockNode::Window {
+                window_identifier: window_id.to_string(),
+                is_visible: true,
+            };
+
+            if dock_root.reparent_as_tab(new_node, &anchor_path) {
+                changed = true;
+            }
+        }
+
+        changed
+    }
 }
 
 pub struct DockableWindowSettings {
@@ -98,7 +156,7 @@ pub struct DockableWindowSettings {
 impl DockableWindowSettings {
     fn new() -> Self {
         let config_file = Self::default_config_path();
-        let config = if config_file.exists() {
+        let mut config = if config_file.exists() {
             match fs::read_to_string(&config_file) {
                 Ok(json) => serde_json::from_str(&json).unwrap_or_default(),
                 Err(_) => DockSettingsConfig::default(),
@@ -106,6 +164,16 @@ impl DockableWindowSettings {
         } else {
             DockSettingsConfig::default()
         };
+
+        #[cfg(any(target_os = "windows", target_os = "macos", target_os = "linux"))]
+        {
+            let did_migrate = DockSettingsConfig::migrate_layout(&mut config.dock_root);
+            if did_migrate {
+                if let Ok(json) = to_string_pretty(&config) {
+                    let _ = fs::write(&config_file, json);
+                }
+            }
+        }
 
         Self {
             config: Arc::new(RwLock::new(config)),
@@ -134,6 +202,19 @@ impl DockableWindowSettings {
             .parent()
             .unwrap_or(&Path::new(""))
             .join("docking_settings.json")
+    }
+
+    pub fn get_config_path_display() -> String {
+        Self::default_config_path().to_string_lossy().to_string()
+    }
+
+    pub fn clear_config_file() -> bool {
+        let config_file = Self::default_config_path();
+
+        match fs::remove_file(&config_file) {
+            Ok(_) => true,
+            Err(error) => error.kind() == std::io::ErrorKind::NotFound,
+        }
     }
 
     fn save_config() {

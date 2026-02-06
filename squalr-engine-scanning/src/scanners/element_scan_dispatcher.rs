@@ -5,8 +5,6 @@ use crate::scanners::scanner_null::ScannerNull;
 use crate::scanners::snapshot_scanner::Scanner;
 use crate::scanners::vector::scanner_vector_aligned::ScannerVectorAligned;
 use crate::scanners::vector::scanner_vector_overlapping::ScannerVectorOverlapping;
-use crate::scanners::vector::scanner_vector_overlapping_bytewise_periodic::ScannerVectorOverlappingBytewisePeriodic;
-use crate::scanners::vector::scanner_vector_overlapping_bytewise_staggered::ScannerVectorOverlappingBytewiseStaggered;
 use crate::scanners::vector::scanner_vector_sparse::ScannerVectorSparse;
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
 use squalr_engine_api::registries::scan_rules::element_scan_rule_registry::ElementScanRuleRegistry;
@@ -34,6 +32,12 @@ impl ElementScanDispatcher {
         snapshot_region_filter_collection: &SnapshotRegionFilterCollection,
         element_scan_plan: &ElementScanPlan,
     ) -> SnapshotRegionFilterCollection {
+        let unit_size_in_bytes = element_scan_plan
+            .get_scan_constraints_by_data_type()
+            .get(snapshot_region_filter_collection.get_data_type_ref())
+            .and_then(|scan_constraints| scan_constraints.iter().map(|c| c.get_unit_size_in_bytes()).max())
+            .unwrap_or(snapshot_region_filter_collection.get_unit_size_in_bytes());
+
         // Run the scan either single-threaded or parallel based on settings. Single-thread is not advised unless debugging.
         let result_snapshot_region_filters = if element_scan_plan.get_is_single_thread_scan() {
             snapshot_region_filter_collection
@@ -65,6 +69,7 @@ impl ElementScanDispatcher {
             result_snapshot_region_filters,
             snapshot_region_filter_collection.get_data_type_ref().clone(),
             snapshot_region_filter_collection.get_memory_alignment(),
+            unit_size_in_bytes,
         )
     }
 

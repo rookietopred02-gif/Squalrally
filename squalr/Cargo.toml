@@ -1,6 +1,6 @@
 [package]
 name = "squalr"
-version = "0.1.1"
+version = "4.0.0"
 authors = ["Zachary Canann"]
 edition = "2024"
 # build = "build.rs"
@@ -15,12 +15,15 @@ eframe = ">=0.32.3"
 env_logger = ">=0.11.8"
 epaint = ">=0.32.3"
 image = ">=0.25.8"
+iced-x86 = ">=1.20.0"
 log = ">=0.4.27"
 rodio = "=0.20.1"
+rustc-demangle = "0.1.26"
 serde = ">=1.0.228"
 serde_json = ">=1.0.145"
 smallvec = ">=1.15.1"
 wasm-bindgen = "0.2"
+windows-sys = { version = "0.61.1", features = ["Win32_Foundation", "Win32_System_Diagnostics_Debug", "Win32_System_Kernel", "Win32_System_Threading"] }
 
 [build-dependencies]
 winresource = ">=0.1.20"

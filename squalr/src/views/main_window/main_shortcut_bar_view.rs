@@ -6,7 +6,10 @@ use crate::{
 use eframe::egui::{Align, Direction, Layout, Response, Sense, Spinner, Ui, UiBuilder, Widget};
 use epaint::{CornerRadius, Rect, vec2};
 use squalr_engine_api::{dependency_injection::dependency::Dependency, events::process::changed::process_changed_event::ProcessChangedEvent};
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone)]
 pub struct MainShortcutBarView {
@@ -45,6 +48,8 @@ impl Widget for MainShortcutBarView {
         self,
         user_interface: &mut Ui,
     ) -> Response {
+        ProcessSelectorViewData::clear_stale_requests(self.process_selector_view_data.clone(), Duration::from_millis(5000));
+
         let (allocated_size_rectangle, response) = user_interface.allocate_exact_size(vec2(user_interface.available_width(), 32.0), Sense::empty());
         let theme = &self.app_context.theme;
         let combo_box_width = 224.0;
@@ -52,6 +57,16 @@ impl Widget for MainShortcutBarView {
         let process_selector_view_data = match self.process_selector_view_data.read("Main shortcut bar view") {
             Some(process_selector_view_data) => process_selector_view_data,
             None => return response,
+        };
+
+        let auto_refresh = {
+            let now = Instant::now();
+            let needs_refresh = process_selector_view_data.windowed_process_list.is_empty()
+                || process_selector_view_data
+                    .last_windowed_refresh
+                    .map(|last| now.duration_since(last) > Duration::from_millis(1000))
+                    .unwrap_or(true);
+            needs_refresh && !process_selector_view_data.is_awaiting_windowed_process_list
         };
 
         // Draw background.
@@ -157,6 +172,10 @@ impl Widget for MainShortcutBarView {
             drop(process_selector_view_data);
 
             ProcessSelectorViewData::select_process(self.process_selector_view_data.clone(), self.app_context.clone(), process_id);
+        }
+
+        if auto_refresh {
+            ProcessSelectorViewData::refresh_windowed_process_list(self.process_selector_view_data.clone(), self.app_context.clone());
         }
 
         response

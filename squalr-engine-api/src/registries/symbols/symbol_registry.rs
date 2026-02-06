@@ -7,6 +7,7 @@ use crate::structures::structs::symbolic_struct_definition::SymbolicStructDefini
 use crate::structures::{
     data_types::{
         built_in_types::{
+            aob::data_type_aob::DataTypeAob,
             bool8::data_type_bool8::DataTypeBool8, bool32::data_type_bool32::DataTypeBool32, f32::data_type_f32::DataTypeF32,
             f32be::data_type_f32be::DataTypeF32be, f64::data_type_f64::DataTypeF64, f64be::data_type_f64be::DataTypeF64be, i8::data_type_i8::DataTypeI8,
             i16::data_type_i16::DataTypeI16, i16be::data_type_i16be::DataTypeI16be, i32::data_type_i32::DataTypeI32, i32be::data_type_i32be::DataTypeI32be,
@@ -68,20 +69,6 @@ impl SymbolRegistry {
 
     pub fn get_registry(&self) -> &HashMap<String, Arc<SymbolicStructDefinition>> {
         &self.symbolic_struct_registry
-    }
-
-    fn register_data_type(
-        &mut self,
-        data_type: Arc<dyn DataType>,
-    ) {
-        // JIRA
-    }
-
-    fn unregister_data_type(
-        &mut self,
-        data_type: Arc<dyn DataType>,
-    ) {
-        // JIRA
     }
 
     pub fn get(
@@ -206,10 +193,22 @@ impl SymbolRegistry {
 
                     let anonymous_value_string = match anonymized_value {
                         Ok(anonymous_value_string) => anonymous_value_string,
-                        Err(error) => return Err(error.to_string()),
+                        Err(error) => {
+                            log::debug!(
+                                "Failed to anonymize value as {:?} for {}: {}",
+                                anonymous_value_string_format,
+                                data_value.get_data_type_id(),
+                                error
+                            );
+                            continue;
+                        }
                     };
 
                     anonymized_values.push(anonymous_value_string);
+                }
+
+                if anonymized_values.is_empty() {
+                    return Err("No supported display formats produced a value.".to_string());
                 }
 
                 Ok(anonymized_values)
@@ -374,6 +373,7 @@ impl SymbolRegistry {
         let mut data_type_registry: HashMap<String, Arc<dyn DataType>> = HashMap::new();
 
         let built_in_data_types: Vec<Arc<dyn DataType>> = vec![
+            Arc::new(DataTypeAob {}),
             Arc::new(DataTypeBool8 {}),
             Arc::new(DataTypeBool32 {}),
             Arc::new(DataTypeI8 {}),

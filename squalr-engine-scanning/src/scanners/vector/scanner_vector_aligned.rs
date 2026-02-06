@@ -3,6 +3,7 @@ use crate::scanners::structures::snapshot_region_filter_run_length_encoder::Snap
 use squalr_engine_api::structures::data_types::generics::vector_comparer::VectorComparer;
 use squalr_engine_api::structures::data_types::generics::vector_function::GetVectorFunction;
 use squalr_engine_api::structures::data_types::generics::vector_generics::VectorGenerics;
+use squalr_engine_api::structures::scanning::comparisons::scan_function_scalar::ScanFunctionScalar;
 use squalr_engine_api::structures::scanning::comparisons::scan_function_vector::ScanFunctionVector;
 use squalr_engine_api::structures::scanning::filters::snapshot_region_filter::SnapshotRegionFilter;
 use squalr_engine_api::structures::scanning::plans::element_scan::snapshot_filter_element_scan_plan::SnapshotFilterElementScanPlan;
@@ -90,52 +91,183 @@ where
         let false_mask = Simd::<u8, N>::splat(0x00);
         let true_mask = Simd::<u8, N>::splat(0xFF);
 
-        debug_assert!(vectorizable_iterations > 0);
         debug_assert!(data_type_size == memory_alignment_size);
         debug_assert!(memory_alignment_size == 1 || memory_alignment_size == 2 || memory_alignment_size == 4 || memory_alignment_size == 8);
 
-        if let Some(vector_compare_func) = snapshot_filter_element_scan_plan.get_scan_function_vector() {
-            match vector_compare_func {
-                ScanFunctionVector::Immediate(compare_func) => {
-                    // Compare as many full vectors as we can.
-                    for index in 0..vectorizable_iterations {
-                        let current_values_pointer = unsafe { current_values_pointer.add((index * vectorization_plan.vector_size_in_bytes) as usize) };
-                        let compare_result = compare_func(current_values_pointer);
+        let mut did_vector_scan = false;
 
-                        Self::encode_results(&compare_result, &mut run_length_encoder, memory_alignment_size, true_mask, false_mask);
+        if vectorizable_iterations > 0 {
+            if let Some(vector_compare_func) = snapshot_filter_element_scan_plan.get_scan_function_vector() {
+                did_vector_scan = true;
+
+                match vector_compare_func {
+                    ScanFunctionVector::Immediate(compare_func) => {
+                        // Compare as many full vectors as we can.
+                        for index in 0..vectorizable_iterations {
+                            let current_values_pointer =
+                                unsafe { current_values_pointer.add((index * vectorization_plan.vector_size_in_bytes) as usize) };
+                            let compare_result = compare_func(current_values_pointer);
+
+                            Self::encode_results(&compare_result, &mut run_length_encoder, memory_alignment_size, true_mask, false_mask);
+                        }
+
+                        // Handle remainder elements.
+                        if remainder_bytes > 0 {
+                            let current_values_pointer = unsafe { current_values_pointer.add(remainder_ptr_offset as usize) };
+                            let compare_result = compare_func(current_values_pointer);
+
+                            Self::encode_remainder_results(&compare_result, &mut run_length_encoder, memory_alignment_size, remainder_bytes);
+                        }
                     }
+                    ScanFunctionVector::RelativeOrDelta(compare_func) => {
+                        // Compare as many full vectors as we can.
+                        for index in 0..vectorizable_iterations {
+                            let current_values_pointer =
+                                unsafe { current_values_pointer.add((index * vectorization_plan.vector_size_in_bytes) as usize) };
+                            let previous_value_pointer =
+                                unsafe { previous_value_pointer.add((index * vectorization_plan.vector_size_in_bytes) as usize) };
+                            let compare_result = compare_func(current_values_pointer, previous_value_pointer);
 
-                    // Handle remainder elements.
-                    if remainder_bytes > 0 {
-                        let current_values_pointer = unsafe { current_values_pointer.add(remainder_ptr_offset as usize) };
-                        let compare_result = compare_func(current_values_pointer);
+                            Self::encode_results(&compare_result, &mut run_length_encoder, memory_alignment_size, true_mask, false_mask);
+                        }
 
-                        Self::encode_remainder_results(&compare_result, &mut run_length_encoder, memory_alignment_size, remainder_bytes);
-                    }
-                }
-                ScanFunctionVector::RelativeOrDelta(compare_func) => {
-                    // Compare as many full vectors as we can.
-                    for index in 0..vectorizable_iterations {
-                        let current_values_pointer = unsafe { current_values_pointer.add((index * vectorization_plan.vector_size_in_bytes) as usize) };
-                        let previous_value_pointer = unsafe { previous_value_pointer.add((index * vectorization_plan.vector_size_in_bytes) as usize) };
-                        let compare_result = compare_func(current_values_pointer, previous_value_pointer);
+                        // Handle remainder elements.
+                        if remainder_bytes > 0 {
+                            let current_values_pointer = unsafe { current_values_pointer.add(remainder_ptr_offset as usize) };
+                            let previous_value_pointer = unsafe { previous_value_pointer.add(remainder_ptr_offset as usize) };
+                            let compare_result = compare_func(current_values_pointer, previous_value_pointer);
 
-                        Self::encode_results(&compare_result, &mut run_length_encoder, memory_alignment_size, true_mask, false_mask);
-                    }
-
-                    // Handle remainder elements.
-                    if remainder_bytes > 0 {
-                        let current_values_pointer = unsafe { current_values_pointer.add(remainder_ptr_offset as usize) };
-                        let previous_value_pointer = unsafe { previous_value_pointer.add(remainder_ptr_offset as usize) };
-                        let compare_result = compare_func(current_values_pointer, previous_value_pointer);
-
-                        Self::encode_remainder_results(&compare_result, &mut run_length_encoder, memory_alignment_size, remainder_bytes);
+                            Self::encode_remainder_results(&compare_result, &mut run_length_encoder, memory_alignment_size, remainder_bytes);
+                        }
                     }
                 }
             }
         }
 
+        // For filters smaller than a single vector (or when no vector compare is available), fall back to scalar.
+        if !did_vector_scan {
+            let element_count = vectorization_plan.element_count;
+
+            if let Some(scalar_compare_func) = snapshot_filter_element_scan_plan.get_scan_function_scalar() {
+                match scalar_compare_func {
+                    ScanFunctionScalar::Immediate(compare_func) => {
+                        for index in 0..element_count {
+                            let current_value_pointer = unsafe { current_values_pointer.add((index * memory_alignment_size) as usize) };
+                            let compare_result = compare_func(current_value_pointer);
+
+                            if compare_result {
+                                run_length_encoder.encode_range(memory_alignment_size);
+                            } else {
+                                run_length_encoder.finalize_current_encode(memory_alignment_size);
+                            }
+                        }
+                    }
+                    ScanFunctionScalar::RelativeOrDelta(compare_func) => {
+                        for index in 0..element_count {
+                            let current_value_pointer = unsafe { current_values_pointer.add((index * memory_alignment_size) as usize) };
+                            let previous_value_pointer = unsafe { previous_value_pointer.add((index * memory_alignment_size) as usize) };
+                            let compare_result = compare_func(current_value_pointer, previous_value_pointer);
+
+                            if compare_result {
+                                run_length_encoder.encode_range(memory_alignment_size);
+                            } else {
+                                run_length_encoder.finalize_current_encode(memory_alignment_size);
+                            }
+                        }
+                    }
+                }
+            } else {
+                log::error!("No scalar scan function available for aligned scan fallback.");
+            }
+        }
+
         run_length_encoder.finalize_current_encode(0);
         run_length_encoder.take_result_regions()
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use squalr_engine_api::structures::data_types::built_in_types::i32::data_type_i32::DataTypeI32;
+    use squalr_engine_api::structures::data_types::built_in_types::u64::data_type_u64::DataTypeU64;
+    use squalr_engine_api::structures::data_types::data_type_ref::DataTypeRef;
+    use squalr_engine_api::structures::data_types::floating_point_tolerance::FloatingPointTolerance;
+    use squalr_engine_api::structures::data_values::data_value::DataValue;
+    use squalr_engine_api::structures::memory::memory_alignment::MemoryAlignment;
+    use squalr_engine_api::structures::memory::normalized_region::NormalizedRegion;
+    use squalr_engine_api::structures::scanning::comparisons::scan_compare_type::ScanCompareType;
+    use squalr_engine_api::structures::scanning::comparisons::scan_compare_type_immediate::ScanCompareTypeImmediate;
+    use squalr_engine_api::structures::scanning::constraints::scan_constraint::ScanConstraint;
+    use squalr_engine_api::structures::scanning::constraints::scan_constraint_finalized::ScanConstraintFinalized;
+
+    fn make_snapshot_region(
+        base_address: u64,
+        bytes: Vec<u8>,
+    ) -> SnapshotRegion {
+        let region_size = bytes.len() as u64;
+        let normalized_region = NormalizedRegion::new(base_address, region_size);
+        let mut snapshot_region = SnapshotRegion::new(normalized_region, vec![]);
+        snapshot_region.current_values = bytes.clone();
+        snapshot_region.previous_values = bytes;
+        snapshot_region
+    }
+
+    #[test]
+    fn aligned_vector_scan_small_region_does_not_overread() {
+        let base_address = 0u64;
+        let region_size = 12u64;
+
+        let snapshot_region = make_snapshot_region(base_address, vec![0u8; region_size as usize]);
+        let snapshot_region_filter = SnapshotRegionFilter::new(base_address, region_size);
+
+        let data_value = DataValue::new(DataTypeRef::new(DataTypeI32::DATA_TYPE_ID), 0i32.to_le_bytes().to_vec());
+        let scan_constraint = ScanConstraint::new(
+            ScanCompareType::Immediate(ScanCompareTypeImmediate::Equal),
+            data_value,
+            FloatingPointTolerance::default(),
+        );
+        let scan_constraint_finalized = ScanConstraintFinalized::new(scan_constraint);
+        let snapshot_filter_element_scan_plan = SnapshotFilterElementScanPlan::new(
+            &scan_constraint_finalized,
+            MemoryAlignment::Alignment4,
+            FloatingPointTolerance::default(),
+        );
+
+        let scanner = ScannerVectorAligned::<16> {};
+        let results = scanner.scan_region(&snapshot_region, &snapshot_region_filter, &snapshot_filter_element_scan_plan);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].get_base_address(), base_address);
+        assert_eq!(results[0].get_region_size(), region_size);
+    }
+
+    #[test]
+    fn aligned_vector_scan_ignores_trailing_bytes_without_full_element() {
+        let base_address = 0u64;
+        let region_size = 20u64; // 2x u64 (16 bytes) + 4 trailing bytes
+
+        let snapshot_region = make_snapshot_region(base_address, vec![0u8; region_size as usize]);
+        let snapshot_region_filter = SnapshotRegionFilter::new(base_address, region_size);
+
+        let data_value = DataValue::new(DataTypeRef::new(DataTypeU64::DATA_TYPE_ID), 0u64.to_le_bytes().to_vec());
+        let scan_constraint = ScanConstraint::new(
+            ScanCompareType::Immediate(ScanCompareTypeImmediate::Equal),
+            data_value,
+            FloatingPointTolerance::default(),
+        );
+        let scan_constraint_finalized = ScanConstraintFinalized::new(scan_constraint);
+        let snapshot_filter_element_scan_plan = SnapshotFilterElementScanPlan::new(
+            &scan_constraint_finalized,
+            MemoryAlignment::Alignment8,
+            FloatingPointTolerance::default(),
+        );
+
+        let scanner = ScannerVectorAligned::<16> {};
+        let results = scanner.scan_region(&snapshot_region, &snapshot_region_filter, &snapshot_filter_element_scan_plan);
+
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].get_base_address(), base_address);
+        assert_eq!(results[0].get_region_size(), 16);
     }
 }

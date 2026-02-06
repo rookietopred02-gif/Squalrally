@@ -120,7 +120,7 @@ impl<'lifetime> Widget for Slider<'lifetime> {
             border_color: self.border_color,
             border_color_focused: self.border_color_focused.unwrap_or(self.border_color),
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Create circular handle.
         let range = (self.maximum_value - self.minimum_value).max(1);
@@ -149,7 +149,7 @@ impl<'lifetime> Widget for Slider<'lifetime> {
             border_color: self.border_color,
             border_color_focused: self.border_color_focused.unwrap_or(self.border_color),
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         let mut changed = false;
 
@@ -172,9 +172,7 @@ impl<'lifetime> Widget for Slider<'lifetime> {
         }
 
         if response.clicked() {
-            if let Some(sound) = self.click_sound {
-                println!("JIRA: Play sound: {}", sound);
-            }
+            let _click_sound = self.click_sound;
         }
 
         if changed {

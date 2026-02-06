@@ -71,7 +71,7 @@ impl<'lifetime> Widget for ToolbarHeaderItemView<'lifetime> {
             border_color: theme.background_control_primary_light,
             border_color_focused: theme.background_control_primary_light,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         let text_pos = pos2(
             allocated_size_rectangle.min.x + padding_h,

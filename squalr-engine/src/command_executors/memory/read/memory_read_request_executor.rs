@@ -21,7 +21,7 @@ impl PrivilegedCommandRequestExecutor for MemoryReadRequest {
             .get_process_manager()
             .get_opened_process()
         {
-            log::info!("Reading value from address {}", self.address);
+            log::debug!("Reading memory at address 0x{:X}", self.address);
 
             let symbol_registry = engine_privileged_state.get_registries().get_symbol_registry();
             let mut out_valued_struct = self

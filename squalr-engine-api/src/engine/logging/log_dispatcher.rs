@@ -58,6 +58,19 @@ impl LogDispatcher {
 
         let log_history_appender = LogHistoryAppender::new(self.log_history.clone());
 
+        let level = std::env::var("SQUALR_LOG_LEVEL")
+            .ok()
+            .and_then(|value| match value.trim().to_ascii_lowercase().as_str() {
+                "off" => Some(LevelFilter::Off),
+                "error" => Some(LevelFilter::Error),
+                "warn" | "warning" => Some(LevelFilter::Warn),
+                "info" => Some(LevelFilter::Info),
+                "debug" => Some(LevelFilter::Debug),
+                "trace" => Some(LevelFilter::Trace),
+                _ => None,
+            })
+            .unwrap_or(LevelFilter::Info);
+
         let config = Config::builder()
             .appender(Appender::builder().build("stdout", Box::new(stdout)))
             .appender(Appender::builder().build("file", Box::new(file_appender)))
@@ -67,7 +80,7 @@ impl LogDispatcher {
                     .appender("stdout")
                     .appender("file")
                     .appender("log_events")
-                    .build(LevelFilter::Debug),
+                    .build(level),
             )?;
 
         log4rs::init_config(config)?;

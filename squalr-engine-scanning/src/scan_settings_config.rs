@@ -3,6 +3,7 @@ use squalr_engine_api::structures::data_types::floating_point_tolerance::Floatin
 use squalr_engine_api::structures::memory::memory_alignment::MemoryAlignment;
 use squalr_engine_api::structures::scanning::memory_read_mode::MemoryReadMode;
 use squalr_engine_api::structures::settings::scan_settings::ScanSettings;
+use squalr_engine_api::structures::settings::scan_thread_priority::ScanThreadPriority;
 use std::fs;
 use std::path::{Path, PathBuf};
 use std::sync::Once;
@@ -68,15 +69,163 @@ impl ScanSettingsConfig {
 
     pub fn get_results_page_size() -> u32 {
         if let Ok(config) = Self::get_instance().config.read() {
-            config.results_page_size
+            config.results_page_size_max.max(1)
         } else {
-            ScanSettings::default().results_page_size
+            ScanSettings::default().results_page_size_max.max(1)
         }
+    }
+
+    pub fn get_results_page_size_max() -> u32 {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.results_page_size_max.max(1)
+        } else {
+            ScanSettings::default().results_page_size_max.max(1)
+        }
+    }
+
+    pub fn get_results_page_size_auto() -> bool {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.results_page_size_auto
+        } else {
+            ScanSettings::default().results_page_size_auto
+        }
+    }
+
+    pub fn get_scan_buffer_kb() -> u32 {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.scan_buffer_kb
+        } else {
+            ScanSettings::default().scan_buffer_kb
+        }
+    }
+
+    pub fn set_scan_buffer_kb(value: u32) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.scan_buffer_kb = value.max(64);
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_thread_priority() -> ScanThreadPriority {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.thread_priority
+        } else {
+            ScanSettings::default().thread_priority
+        }
+    }
+
+    pub fn set_thread_priority(value: ScanThreadPriority) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.thread_priority = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_fast_scan_enabled() -> bool {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.fast_scan_enabled
+        } else {
+            ScanSettings::default().fast_scan_enabled
+        }
+    }
+
+    pub fn set_fast_scan_enabled(value: bool) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.fast_scan_enabled = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_fast_scan_alignment() -> Option<MemoryAlignment> {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.fast_scan_alignment
+        } else {
+            ScanSettings::default().fast_scan_alignment
+        }
+    }
+
+    pub fn set_fast_scan_alignment(value: Option<MemoryAlignment>) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.fast_scan_alignment = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_fast_scan_last_digits() -> Option<u8> {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.fast_scan_last_digits
+        } else {
+            ScanSettings::default().fast_scan_last_digits
+        }
+    }
+
+    pub fn set_fast_scan_last_digits(value: Option<u8>) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.fast_scan_last_digits = value.map(|digit| digit.min(15));
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_pause_while_scanning() -> bool {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.pause_while_scanning
+        } else {
+            ScanSettings::default().pause_while_scanning
+        }
+    }
+
+    pub fn set_pause_while_scanning(value: bool) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.pause_while_scanning = value;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn get_repeat_scan_delay_ms() -> u64 {
+        if let Ok(config) = Self::get_instance().config.read() {
+            config.repeat_scan_delay_ms
+        } else {
+            ScanSettings::default().repeat_scan_delay_ms
+        }
+    }
+
+    pub fn set_repeat_scan_delay_ms(value: u64) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.repeat_scan_delay_ms = value;
+        }
+
+        Self::save_config();
     }
 
     pub fn set_results_page_size(value: u32) {
         if let Ok(mut config) = Self::get_instance().config.write() {
-            config.results_page_size = value;
+            let clamped = value.max(1);
+            config.results_page_size = clamped;
+            config.results_page_size_max = clamped;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn set_results_page_size_max(value: u32) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            let clamped = value.max(1);
+            config.results_page_size_max = clamped;
+            config.results_page_size = clamped;
+        }
+
+        Self::save_config();
+    }
+
+    pub fn set_results_page_size_auto(value: bool) {
+        if let Ok(mut config) = Self::get_instance().config.write() {
+            config.results_page_size_auto = value;
         }
 
         Self::save_config();

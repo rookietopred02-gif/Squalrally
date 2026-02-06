@@ -164,6 +164,7 @@ impl SnapshotRegion {
 
         let snapshot_region_filter_collections = data_type_refs_iterator
             .map(|data_type_ref| {
+                let data_type_unit_size = SymbolRegistry::get_instance().get_unit_size_in_bytes(data_type_ref);
                 SnapshotRegionFilterCollection::new(
                     vec![vec![SnapshotRegionFilter::new(
                         self.get_base_address(),
@@ -171,6 +172,7 @@ impl SnapshotRegion {
                     )]],
                     data_type_ref.clone(),
                     memory_alignment,
+                    data_type_unit_size,
                 )
             })
             .collect();
@@ -190,6 +192,14 @@ impl SnapshotRegion {
 
         // Upon assigning new scan results, we want to cull memory outside of the bounds of the filters.
         self.resize_to_filters();
+    }
+
+    pub fn mark_unreadable(&mut self) {
+        self.current_values.clear();
+        self.previous_values.clear();
+        self.page_boundaries.clear();
+        self.page_boundary_tombstones.clear();
+        self.normalized_region.set_region_size(0);
     }
 
     /// Constrict this snapshot region based on the highest and lowest addresses in the contained scan result filters.

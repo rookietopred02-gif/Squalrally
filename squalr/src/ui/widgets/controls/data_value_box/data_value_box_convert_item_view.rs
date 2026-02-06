@@ -70,7 +70,7 @@ impl<'a> Widget for DataValueBoxConvertItemView<'a> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Show a checkbox only for interpretations.
         if !self.is_conversion_available {

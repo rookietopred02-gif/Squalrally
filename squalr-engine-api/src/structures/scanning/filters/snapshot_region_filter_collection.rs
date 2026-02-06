@@ -1,4 +1,3 @@
-use crate::registries::symbols::symbol_registry::SymbolRegistry;
 use crate::structures::memory::memory_alignment::MemoryAlignment;
 use crate::structures::{data_types::data_type_ref::DataTypeRef, scanning::filters::snapshot_region_filter::SnapshotRegionFilter};
 use rayon::iter::{IntoParallelRefIterator, ParallelIterator};
@@ -10,6 +9,11 @@ pub struct SnapshotRegionFilterCollection {
 
     // The data type of all elements in this filter.
     data_type_ref: DataTypeRef,
+
+    // The unit size in bytes used to interpret this collection's scan results.
+    // For fixed-size primitives this equals the data type's unit size, but for variable-length types
+    // (e.g., string / AOB) this may be the searched pattern length.
+    unit_size_in_bytes: u64,
 
     // The memory alignment of all elements in this filter.
     memory_alignment: MemoryAlignment,
@@ -25,6 +29,7 @@ impl SnapshotRegionFilterCollection {
         mut snapshot_region_filters: Vec<Vec<SnapshotRegionFilter>>,
         data_type_ref: DataTypeRef,
         memory_alignment: MemoryAlignment,
+        unit_size_in_bytes: u64,
     ) -> Self {
         // Sort each inner vector by base address.
         // JIRA: This data is likely already sorted. Should we just cut this?
@@ -41,7 +46,7 @@ impl SnapshotRegionFilterCollection {
                 .unwrap_or(u64::MAX)
         });
 
-        let data_type_size = SymbolRegistry::get_instance().get_unit_size_in_bytes(&data_type_ref);
+        let data_type_size = unit_size_in_bytes.max(1);
         let number_of_results = snapshot_region_filters
             .iter()
             .flatten()
@@ -52,6 +57,7 @@ impl SnapshotRegionFilterCollection {
             snapshot_region_filters,
             number_of_results,
             data_type_ref,
+            unit_size_in_bytes: data_type_size,
             memory_alignment,
         }
     }
@@ -88,6 +94,10 @@ impl SnapshotRegionFilterCollection {
     /// Gets the data type of this snapshot region filter collection.
     pub fn get_data_type_ref(&self) -> &DataTypeRef {
         &self.data_type_ref
+    }
+
+    pub fn get_unit_size_in_bytes(&self) -> u64 {
+        self.unit_size_in_bytes
     }
 
     /// Gets the memory alignment of this snapshot region filter collection.

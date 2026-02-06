@@ -39,7 +39,7 @@ impl Widget for DockedWindowTitleBarView {
         let docking_manager = &self.app_context.docking_manager;
 
         // Background highlight if this is the actively dragged window.
-        let background = if let Ok(docking_manager) = docking_manager.read() {
+        let background = if let Ok(_docking_manager) = docking_manager.read() {
             /*
             if docking_manager.active_dragged_window_id() == Some(&self.identifier) {
                 theme.selected_border
@@ -83,9 +83,10 @@ impl Widget for DockedWindowTitleBarView {
 
             if close.clicked() {
                 if let Ok(mut docking_manager) = docking_manager.try_write() {
-                    if let Some(docked_node) = docking_manager.get_node_by_id_mut(&self.identifier) {
-                        docked_node.set_visible(false);
-                    }
+                    // Hide the window and immediately validate tab selection so we don't end up with
+                    // an invisible active tab (blank content area).
+                    docking_manager.set_window_visible(&self.identifier, false);
+                    docking_manager.prepare_for_presentation();
                 }
             }
         });
@@ -95,7 +96,7 @@ impl Widget for DockedWindowTitleBarView {
             allocated_size_rectangle.min,
             pos2(allocated_size_rectangle.max.x - 36.0, allocated_size_rectangle.max.y),
         );
-        let drag = user_interface.interact(drag_rect, Id::new(format!("dock_titlebar_{}", self.identifier)), Sense::click_and_drag());
+        let _drag = user_interface.interact(drag_rect, Id::new(format!("dock_titlebar_{}", self.identifier)), Sense::click_and_drag());
 
         /*
         if drag.drag_started() {

@@ -1,4 +1,4 @@
-use eframe::egui::{Color32, CornerRadius, Response, Sense, Stroke, Ui, Widget};
+use eframe::egui::{Color32, CornerRadius, Stroke, Ui};
 use epaint::{Pos2, Rect, StrokeKind};
 
 #[derive(Default)]
@@ -20,19 +20,18 @@ pub struct StateLayer {
     pub border_color_focused: Color32,
 }
 
-impl Widget for StateLayer {
-    fn ui(
+impl StateLayer {
+    pub fn paint(
         self,
         user_interface: &mut Ui,
-    ) -> Response {
+    ) {
         let bounds_rect = Rect {
             min: self.bounds_min,
             max: self.bounds_max,
         };
-        let response = user_interface.interact(bounds_rect, user_interface.id().with("state_layer"), Sense::hover());
 
         if !user_interface.is_rect_visible(bounds_rect) {
-            return response;
+            return;
         }
 
         // Select background color depending on state (pressed > hover > default).
@@ -60,7 +59,5 @@ impl Widget for StateLayer {
                 StrokeKind::Inside,
             );
         }
-
-        response
     }
 }

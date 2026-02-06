@@ -1,4 +1,5 @@
-use crate::conversions::conversions::Conversions;
+use crate::conversions::conversions_from_binary::ConversionsFromBinary;
+use crate::conversions::conversions_from_hexadecimal::ConversionsFromHexadecimal;
 use crate::structures::data_types::data_type_error::DataTypeError;
 use crate::structures::data_types::data_type_meta_data::DataTypeMetaData;
 use crate::structures::data_types::data_type_ref::DataTypeRef;
@@ -79,12 +80,12 @@ impl DataType for DataTypeString {
         match data_type_ref.get_meta_data() {
             DataTypeMetaData::EncodedString(size, string_encoding) => match anonymous_value_string.get_value() {
                 AnonymousValueStringContainer::BinaryValue(value_string_utf8, container_type) => {
-                    let value_bytes = Conversions::binary_to_bytes(value_string_utf8).map_err(|error: &str| DataTypeError::ParseError(error.to_string()))?;
+                    let value_bytes = ConversionsFromBinary::binary_to_bytes(value_string_utf8).map_err(|error| DataTypeError::ParseError(error.to_string()))?;
 
                     return Ok(DataValue::new(data_type_ref, value_bytes));
                 }
                 AnonymousValueStringContainer::HexadecimalValue(value_string_utf8, container_type) => {
-                    let value_bytes = Conversions::hex_to_bytes(value_string_utf8).map_err(|error: &str| DataTypeError::ParseError(error.to_string()))?;
+                    let value_bytes = ConversionsFromHexadecimal::hex_to_bytes(value_string_utf8).map_err(|error| DataTypeError::ParseError(error.to_string()))?;
 
                     return Ok(DataValue::new(data_type_ref, value_bytes));
                 }
@@ -506,8 +507,8 @@ impl DataType for DataTypeString {
         // If the value is passes as hex, we actually just validate whether we successfully can parse the hex string and re-encode it as a string.
         let string_length = match anonymous_value_string.get_value() {
             AnonymousValueStringContainer::String(string) => string.as_bytes().len(),
-            AnonymousValueStringContainer::BinaryValue(string) => Conversions::binary_to_bytes(string).unwrap_or_default().len(),
-            AnonymousValueStringContainer::HexadecimalValue(string) => Conversions::hex_to_bytes(string).unwrap_or_default().len(),
+            AnonymousValueStringContainer::BinaryValue(string) => ConversionsFromBinary::binary_to_bytes(string).unwrap_or_default().len(),
+            AnonymousValueStringContainer::HexadecimalValue(string) => ConversionsFromHexadecimal::hex_to_bytes(string).unwrap_or_default().len(),
         } as u64;
 
         DataTypeMetaData::EncodedString(string_length, StringEncoding::Utf8)

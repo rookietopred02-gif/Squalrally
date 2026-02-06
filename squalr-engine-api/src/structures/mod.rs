@@ -4,6 +4,7 @@ pub mod logging;
 pub mod memory;
 pub mod processes;
 pub mod projects;
+pub mod pointer_scan;
 pub mod results;
 pub mod scan_results;
 pub mod scanning;

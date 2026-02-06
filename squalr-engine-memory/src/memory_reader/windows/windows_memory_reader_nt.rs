@@ -4,7 +4,10 @@ use squalr_engine_api::structures::processes::opened_process_info::OpenedProcess
 use squalr_engine_api::structures::structs::valued_struct::ValuedStruct;
 use std::ffi::c_void;
 use std::mem;
+use std::sync::atomic::{AtomicU64, Ordering};
+use std::time::{SystemTime, UNIX_EPOCH};
 use windows_sys::Win32::Foundation::GetLastError;
+use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 use windows_sys::Win32::System::LibraryLoader::GetModuleHandleA;
 use windows_sys::Win32::System::LibraryLoader::GetProcAddress;
 
@@ -15,6 +18,9 @@ type NtReadVirtualMemory = unsafe extern "system" fn(
     buffer_size: usize,
     number_of_bytes_read: *mut usize,
 ) -> i32;
+
+static LAST_FAILURE_KEY: AtomicU64 = AtomicU64::new(0);
+static LAST_FAILURE_AT_MS: AtomicU64 = AtomicU64::new(0);
 
 pub struct WindowsMemoryReaderNt {
     nt_read_virtual_memory: NtReadVirtualMemory,
@@ -42,6 +48,66 @@ impl WindowsMemoryReaderNt {
                 nt_read_virtual_memory: mem::transmute(proc_addr),
             }
         }
+    }
+
+    unsafe fn read_bytes_fallback_paged(
+        &self,
+        process_handle: isize,
+        address: u64,
+        values: &mut [u8],
+    ) -> bool {
+        // Fallback for pages that partially read / fail. We attempt smaller reads to recover any readable bytes.
+        // This avoids "0 bytes read" scans caused by ERROR_PARTIAL_COPY / STATUS_PARTIAL_COPY behavior.
+        const PAGE_CHUNK: usize = 0x1000;
+
+        let mut any_success = false;
+        let mut offset = 0usize;
+        let size = values.len();
+
+        // Ensure unreadable bytes don't accidentally retain stale data from a previous read.
+        values.fill(0);
+
+        while offset < size {
+            let remaining = size - offset;
+            let chunk_size = remaining.min(PAGE_CHUNK);
+            let addr = address.saturating_add(offset as u64);
+            let dst = &mut values[offset..offset + chunk_size];
+
+            let mut bytes_read = 0usize;
+            let status = unsafe {
+                (self.nt_read_virtual_memory)(
+                    process_handle,
+                    addr as *const c_void,
+                    dst.as_mut_ptr() as *mut c_void,
+                    chunk_size,
+                    &mut bytes_read,
+                )
+            };
+
+            if status == 0 && bytes_read > 0 {
+                any_success = true;
+            } else {
+                let mut rpm_bytes_read = 0usize;
+                let rpm_ok = unsafe {
+                    ReadProcessMemory(
+                        process_handle as *mut c_void,
+                        addr as *const c_void,
+                        dst.as_mut_ptr() as *mut c_void,
+                        chunk_size,
+                        &mut rpm_bytes_read,
+                    ) != 0
+                }
+                    && rpm_bytes_read > 0;
+
+                if rpm_ok {
+                    any_success = true;
+                }
+            }
+
+            offset = offset.saturating_add(chunk_size);
+        }
+
+        any_success
     }
 }
 
@@ -88,7 +154,7 @@ impl IMemoryReader for WindowsMemoryReaderNt {
             let size = values.len();
             let mut bytes_read = 0;
 
-            let _unused_result = (self.nt_read_virtual_memory)(
+            let status = (self.nt_read_virtual_memory)(
                 process_info.get_handle() as isize,
                 address as *const c_void,
                 values.as_mut_ptr() as *mut c_void,
@@ -96,7 +162,51 @@ impl IMemoryReader for WindowsMemoryReaderNt {
                 &mut bytes_read,
             );
 
-            return bytes_read == size;
+            if status == 0 && bytes_read == size {
+                return true;
+            }
+
+            let mut rpm_bytes_read = 0;
+            let rpm_success = ReadProcessMemory(
+                process_info.get_handle() as *mut c_void,
+                address as *const c_void,
+                values.as_mut_ptr() as *mut c_void,
+                size,
+                &mut rpm_bytes_read,
+            ) != 0
+                && rpm_bytes_read == size;
+
+            if rpm_success {
+                return true;
+            }
+
+            // Throttle to avoid spamming logs during scans.
+            let key = ((status as u32 as u64) << 32) | (bytes_read as u64).min(u32::MAX as u64);
+            let now_ms = SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap_or_default()
+                .as_millis() as u64;
+
+            let last_key = LAST_FAILURE_KEY.load(Ordering::Relaxed);
+            let last_ms = LAST_FAILURE_AT_MS.load(Ordering::Relaxed);
+
+            if key != last_key || now_ms.saturating_sub(last_ms) > 1000 {
+                LAST_FAILURE_KEY.store(key, Ordering::Relaxed);
+                LAST_FAILURE_AT_MS.store(now_ms, Ordering::Relaxed);
+
+                log::debug!(
+                    "NtReadVirtualMemory partial/failure (addr=0x{:X}, size={}, status=0x{:08X}, bytes_read={}, rpm_bytes_read={}, last_error={})",
+                    address,
+                    size,
+                    status as u32,
+                    bytes_read,
+                    rpm_bytes_read,
+                    GetLastError()
+                );
+            }
+
+            // Recover readable bytes using smaller reads, and treat that as success.
+            self.read_bytes_fallback_paged(process_info.get_handle() as isize, address, values)
         }
     }
 }

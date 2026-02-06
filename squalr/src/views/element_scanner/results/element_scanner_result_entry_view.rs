@@ -1,6 +1,7 @@
 use crate::{
     app_context::AppContext,
     ui::widgets::controls::{checkbox::Checkbox, state_layer::StateLayer},
+    ui::ui_trace,
     views::element_scanner::results::view_data::element_scanner_result_frame_action::ElementScannerResultFrameAction,
 };
 use eframe::egui::{Align2, Rect, Response, Sense, Ui, Widget, pos2, vec2};
@@ -59,7 +60,11 @@ impl<'a> Widget for ElementScannerResultEntryView<'a> {
         let text_left_padding = 8.0;
         let row_height = self.get_height();
 
-        let (allocated_size_rectangle, response) = user_interface.allocate_exact_size(vec2(user_interface.available_size().x, row_height), Sense::click());
+        // `available_size().x` can be 0 in some nested layout contexts (notably in headless test frames),
+        // which would make the row non-interactive even though we still paint text into it. Prefer
+        // `available_width()` for a stable, clickable row rect.
+        let row_width = user_interface.available_width().max(1.0);
+        let (allocated_size_rectangle, response) = user_interface.allocate_exact_size(vec2(row_width, row_height), Sense::click());
 
         if self.is_selected {
             // Draw the background.
@@ -91,7 +96,7 @@ impl<'a> Widget for ElementScannerResultEntryView<'a> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Checkbox.
         let checkbox_size = vec2(Checkbox::WIDTH, Checkbox::HEIGHT);
@@ -102,7 +107,22 @@ impl<'a> Widget for ElementScannerResultEntryView<'a> {
         let checkbox_rectangle = Rect::from_min_size(checkbox_position, checkbox_size);
         let is_frozen = self.scan_result.get_is_frozen();
 
+        if response.secondary_clicked() {
+            ui_trace::trace(format!(
+                "results_entry.secondary_clicked index={} address=0x{:X}",
+                self.index,
+                self.scan_result.get_address()
+            ));
+            *self.element_sanner_result_frame_action = ElementScannerResultFrameAction::SetSelectionStart(Some(self.index as i32));
+        }
+
         if response.clicked() {
+            ui_trace::trace(format!(
+                "results_entry.clicked index={} shift={} address=0x{:X}",
+                self.index,
+                user_interface.input(|input| input.modifiers.shift),
+                self.scan_result.get_address()
+            ));
             if user_interface.input(|input| input.modifiers.shift) {
                 *self.element_sanner_result_frame_action = ElementScannerResultFrameAction::SetSelectionEnd(Some(self.index as i32));
             } else {
@@ -114,6 +134,12 @@ impl<'a> Widget for ElementScannerResultEntryView<'a> {
             .place(checkbox_rectangle, Checkbox::new_from_theme(theme).with_check_state_bool(is_frozen))
             .clicked()
         {
+            ui_trace::trace(format!(
+                "results_entry.freeze_toggle index={} new_is_frozen={} address=0x{:X}",
+                self.index,
+                !is_frozen,
+                self.scan_result.get_address()
+            ));
             *self.element_sanner_result_frame_action = ElementScannerResultFrameAction::FreezeIndex(self.index as i32, !is_frozen);
         }
 

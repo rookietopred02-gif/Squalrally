@@ -3,7 +3,7 @@ use crate::{
     ui::{
         converters::data_type_to_icon_converter::DataTypeToIconConverter,
         draw::icon_draw::IconDraw,
-        widgets::controls::{data_value_box::data_value_box_view::DataValueBoxView, state_layer::StateLayer},
+        widgets::controls::state_layer::StateLayer,
     },
     views::struct_viewer::view_data::struct_viewer_frame_action::StructViewerFrameAction,
 };
@@ -83,7 +83,7 @@ impl<'lifetime> Widget for StructViewerEntryView<'lifetime> {
             border_color: theme.background_control_secondary_dark,
             border_color_focused: theme.background_control_secondary_dark,
         }
-        .ui(user_interface);
+        .paint(user_interface);
 
         // Click handling
         if response.double_clicked() {

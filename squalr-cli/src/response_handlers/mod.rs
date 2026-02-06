@@ -19,8 +19,11 @@ pub fn handle_engine_response(response: PrivilegedCommandResponse) {
         PrivilegedCommandResponse::Memory(response) => handle_memory_response(response),
         PrivilegedCommandResponse::Process(response) => handle_process_response(response),
         PrivilegedCommandResponse::Results(response) => handle_scan_results_response(response),
+        // The CLI currently focuses on core scan/process/memory flows. Ignore newer responses for now.
+        PrivilegedCommandResponse::PointerScanResults(_response) => {}
         PrivilegedCommandResponse::Project(response) => handle_project_response(response),
-        PrivilegedCommandResponse::Scan(response) => handle_scan_response(response),
+        PrivilegedCommandResponse::ProjectItems(_response) => {}
         PrivilegedCommandResponse::Settings(response) => handle_settings_response(response),
+        PrivilegedCommandResponse::TrackableTasks(_response) => {}
     }
 }

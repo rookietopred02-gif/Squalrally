@@ -10,11 +10,13 @@ use squalr_engine_api::structures::memory::normalized_region::NormalizedRegion;
 use squalr_engine_api::structures::processes::opened_process_info::OpenedProcessInfo;
 use std::ffi::OsStr;
 use std::path::Path;
-use windows_sys::Win32::Foundation::HMODULE;
+use windows_sys::Win32::Foundation::{GetLastError, HMODULE, ERROR_INVALID_PARAMETER};
 use windows_sys::Win32::System::Memory::{
-    MEMORY_BASIC_INFORMATION64, PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_READWRITE, PAGE_WRITECOPY, VirtualQueryEx,
+    MEMORY_BASIC_INFORMATION64, PAGE_EXECUTE, PAGE_EXECUTE_READ, PAGE_EXECUTE_READWRITE, PAGE_EXECUTE_WRITECOPY, PAGE_GUARD, PAGE_NOACCESS, PAGE_NOCACHE,
+    PAGE_READWRITE, PAGE_WRITECOPY, PAGE_WRITECOMBINE, VirtualQueryEx,
 };
 use windows_sys::Win32::System::ProcessStatus::{K32EnumProcessModulesEx, K32GetModuleFileNameExA, K32GetModuleInformation, LIST_MODULES_ALL, MODULEINFO};
+use windows_sys::Win32::System::SystemInformation::{GetNativeSystemInfo, SYSTEM_INFO};
 
 pub struct WindowsMemoryQueryer;
 
@@ -30,7 +32,8 @@ impl WindowsMemoryQueryer {
         let mut flags = 0;
 
         if protection.contains(MemoryProtectionEnum::WRITE) {
-            flags |= PAGE_READWRITE | PAGE_EXECUTE_READWRITE;
+            // Treat copy-on-write as writable to match CE-style "Writable" expectations.
+            flags |= PAGE_READWRITE | PAGE_EXECUTE_READWRITE | PAGE_WRITECOPY | PAGE_EXECUTE_WRITECOPY;
         }
 
         if protection.contains(MemoryProtectionEnum::EXECUTE) {
@@ -39,6 +42,14 @@ impl WindowsMemoryQueryer {
 
         if protection.contains(MemoryProtectionEnum::COPY_ON_WRITE) {
             flags |= PAGE_WRITECOPY | PAGE_EXECUTE_WRITECOPY;
+        }
+
+        if protection.contains(MemoryProtectionEnum::NO_CACHE) {
+            flags |= PAGE_NOCACHE;
+        }
+
+        if protection.contains(MemoryProtectionEnum::WRITE_COMBINE) {
+            flags |= PAGE_WRITECOMBINE;
         }
 
         flags
@@ -92,7 +103,28 @@ impl IMemoryQueryer for WindowsMemoryQueryer {
                 )
             };
 
-            if result == 0 || mbi.RegionSize <= 0 {
+            if result == 0 {
+                let error = unsafe { GetLastError() };
+                if error == ERROR_INVALID_PARAMETER {
+                    // VirtualQueryEx may return ERROR_INVALID_PARAMETER when the address is outside the valid
+                    // usermode range. Treat this as a graceful end-of-range.
+                    log::debug!(
+                        "VirtualQueryEx reached end of range at 0x{:X} (ERROR_INVALID_PARAMETER).",
+                        current_region.get_base_address()
+                    );
+                } else if error != 0 {
+                    log::error!(
+                        "VirtualQueryEx failed at 0x{:X} (error={}). Check process permissions.",
+                        current_region.get_base_address(),
+                        error
+                    );
+                } else {
+                    log::debug!("VirtualQueryEx returned 0 at 0x{:X}", current_region.get_base_address());
+                }
+                break;
+            }
+
+            if mbi.RegionSize <= 0 {
                 break;
             }
 
@@ -104,6 +136,11 @@ impl IMemoryQueryer for WindowsMemoryQueryer {
                 || mbi.State == windows_sys::Win32::System::Memory::MEM_RESERVE
                 || mbi.State != windows_sys::Win32::System::Memory::MEM_COMMIT
             {
+                continue;
+            }
+
+            // Skip unreadable pages to avoid ReadProcessMemory failures later.
+            if (mbi.Protect & (PAGE_NOACCESS | PAGE_GUARD)) != 0 {
                 continue;
             }
 
@@ -170,7 +207,8 @@ impl IMemoryQueryer for WindowsMemoryQueryer {
         address: u64,
     ) -> bool {
         let start_address = address;
-        let end_address = address;
+        // Use an inclusive 1-byte range. `get_virtual_pages` treats `start >= end` as empty.
+        let end_address = address.saturating_add(1);
         let virtual_pages_in_bounds = self.get_virtual_pages(
             process_info,
             MemoryProtectionEnum::WRITE,
@@ -198,10 +236,16 @@ impl IMemoryQueryer for WindowsMemoryQueryer {
 
     fn get_min_usermode_address(
         &self,
-        _: &OpenedProcessInfo,
+        process_info: &OpenedProcessInfo,
     ) -> u64 {
-        // In windows, anything below this is not addressable by a normal program.
-        0x10000
+        if process_info.get_bitness() == Bitness::Bit32 {
+            // In Windows, anything below this is not addressable by a normal 32-bit program.
+            0x10000
+        } else {
+            let mut system_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
+            unsafe { GetNativeSystemInfo(&mut system_info) };
+            system_info.lpMinimumApplicationAddress as usize as u64
+        }
     }
 
     fn get_max_usermode_address(
@@ -213,8 +257,10 @@ impl IMemoryQueryer for WindowsMemoryQueryer {
             // JIRA: Large Address Aware support? This is incredibly rare, but would be more correct to support.
             0x7FFF_FFFF
         } else {
-            // In windows, the max usermode address is arbitrarily set to this value for x64.
-            0x7FFF_FFFF_FFFF
+            // Use system-provided bounds instead of a hardcoded constant.
+            let mut system_info: SYSTEM_INFO = unsafe { std::mem::zeroed() };
+            unsafe { GetNativeSystemInfo(&mut system_info) };
+            system_info.lpMaximumApplicationAddress as usize as u64
         }
     }
 

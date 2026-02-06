@@ -7,7 +7,10 @@ use crate::{
 };
 use eframe::egui::{Align, Direction, Layout, Response, ScrollArea, Spinner, Ui, Widget};
 use squalr_engine_api::dependency_injection::dependency::Dependency;
-use std::sync::Arc;
+use std::{
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 #[derive(Clone)]
 pub struct ProcessSelectorView {
@@ -38,13 +41,24 @@ impl Widget for ProcessSelectorView {
         self,
         user_interface: &mut Ui,
     ) -> Response {
+        ProcessSelectorViewData::clear_stale_requests(self.process_selector_view_data.clone(), Duration::from_millis(5000));
+
         let theme = self.app_context.theme.clone();
+        let mut auto_refresh = false;
         let response = user_interface
             .allocate_ui_with_layout(user_interface.available_size(), Layout::top_down(Align::Min), |mut user_interface| {
                 let process_selector_view_data = match self.process_selector_view_data.read("Process selector view") {
                     Some(process_selector_view_data) => process_selector_view_data,
                     None => return,
                 };
+
+                let now = Instant::now();
+                let needs_refresh = process_selector_view_data.full_process_list.is_empty()
+                    || process_selector_view_data
+                        .last_full_refresh
+                        .map(|last| now.duration_since(last) > Duration::from_millis(1500))
+                        .unwrap_or(true);
+                auto_refresh = needs_refresh && !process_selector_view_data.is_awaiting_full_process_list;
 
                 user_interface.add(self.process_selector_toolbar_view.clone());
 
@@ -86,6 +100,10 @@ impl Widget for ProcessSelectorView {
                 }
             })
             .response;
+
+        if auto_refresh {
+            ProcessSelectorViewData::refresh_full_process_list(self.process_selector_view_data.clone(), self.app_context.clone());
+        }
 
         response
     }

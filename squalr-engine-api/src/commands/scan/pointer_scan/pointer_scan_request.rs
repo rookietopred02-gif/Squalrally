@@ -13,10 +13,14 @@ pub struct PointerScanRequest {
     pub target_address: AnonymousValueString,
     #[structopt(short = "d", long)]
     pub pointer_data_type_ref: DataTypeRef,
-    #[structopt(short = "d", long)]
+    #[structopt(short = "m", long)]
     pub max_depth: u64,
     #[structopt(short = "o", long)]
     pub offset_size: u64,
+    #[structopt(long)]
+    pub scan_statics: bool,
+    #[structopt(long)]
+    pub scan_heaps: bool,
 }
 
 impl PrivilegedCommandRequest for PointerScanRequest {

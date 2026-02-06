@@ -12,6 +12,7 @@ use squalr_engine_api::{
 use std::{
     collections::{HashMap, HashSet},
     sync::Arc,
+    time::{Duration, Instant},
 };
 
 #[derive(Clone)]
@@ -24,6 +25,8 @@ pub struct ProcessSelectorViewData {
     pub is_awaiting_windowed_process_list: bool,
     pub is_awaiting_full_process_list: bool,
     pub is_opening_process: bool,
+    pub last_windowed_refresh: Option<Instant>,
+    pub last_full_refresh: Option<Instant>,
 }
 
 impl ProcessSelectorViewData {
@@ -37,6 +40,8 @@ impl ProcessSelectorViewData {
             is_awaiting_windowed_process_list: false,
             is_awaiting_full_process_list: false,
             is_opening_process: false,
+            last_windowed_refresh: None,
+            last_full_refresh: None,
         }
     }
 
@@ -62,6 +67,7 @@ impl ProcessSelectorViewData {
                 }
 
                 process_selector_view_data.is_awaiting_windowed_process_list = true;
+                process_selector_view_data.last_windowed_refresh = Some(Instant::now());
             }
             None => return,
         };
@@ -99,6 +105,7 @@ impl ProcessSelectorViewData {
                 }
 
                 process_selector_view_data.is_awaiting_full_process_list = true;
+                process_selector_view_data.last_full_refresh = Some(Instant::now());
             }
             None => return,
         };
@@ -113,6 +120,35 @@ impl ProcessSelectorViewData {
 
             Self::set_full_process_list(&mut process_selector_view_data, &app_context, process_list_response.processes);
         });
+    }
+
+    pub fn clear_stale_requests(
+        process_selector_view_data: Dependency<ProcessSelectorViewData>,
+        max_age: Duration,
+    ) {
+        let now = Instant::now();
+
+        if let Some(mut view_data) = process_selector_view_data.write("Process selector clear stale requests") {
+            if view_data.is_awaiting_windowed_process_list {
+                if view_data
+                    .last_windowed_refresh
+                    .map(|last| now.duration_since(last) > max_age)
+                    .unwrap_or(true)
+                {
+                    view_data.is_awaiting_windowed_process_list = false;
+                }
+            }
+
+            if view_data.is_awaiting_full_process_list {
+                if view_data
+                    .last_full_refresh
+                    .map(|last| now.duration_since(last) > max_age)
+                    .unwrap_or(true)
+                {
+                    view_data.is_awaiting_full_process_list = false;
+                }
+            }
+        }
     }
 
     pub fn select_process(

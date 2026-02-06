@@ -2,6 +2,7 @@
 
 pub mod app;
 pub mod app_context;
+pub mod crash_handler;
 pub mod models;
 pub mod ui;
 pub mod views;
@@ -11,11 +12,30 @@ use eframe::NativeOptions;
 use eframe::egui::{IconData, ViewportBuilder};
 use squalr_engine::engine_mode::EngineMode;
 use squalr_engine::squalr_engine::SqualrEngine;
+use std::io::Write;
 
 static ICON_APP: &[u8] = include_bytes!("../images/app/app_icon.png");
 static APP_NAME: &str = "Squalr";
 
 pub fn main() {
+    crash_handler::install();
+
+    // In release builds we run without a console window. Capture panics to a log file so crashes
+    // remain diagnosable for end users.
+    let panic_log_path = std::env::temp_dir().join("squalr_panic.log");
+    std::panic::set_hook(Box::new(move |panic_info| {
+        let backtrace = std::backtrace::Backtrace::force_capture();
+        if let Ok(mut file) = std::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&panic_log_path)
+        {
+            let _ = writeln!(file, "================ Squalr panic ================");
+            let _ = writeln!(file, "{}", panic_info);
+            let _ = writeln!(file, "{backtrace}");
+        }
+    }));
+
     // Create a standalone engine (same process for gui and engine).
     let mut squalr_engine = match SqualrEngine::new(EngineMode::Standalone) {
         Ok(squalr_engine) => squalr_engine,

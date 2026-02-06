@@ -2,6 +2,7 @@ use crate::memory_reader::memory_reader_trait::IMemoryReader;
 use squalr_engine_api::structures::structs::valued_struct::ValuedStruct;
 use squalr_engine_api::structures::{data_values::data_value::DataValue, processes::opened_process_info::OpenedProcessInfo};
 use std::os::raw::c_void;
+use windows_sys::Win32::Foundation::GetLastError;
 use windows_sys::Win32::System::Diagnostics::Debug::ReadProcessMemory;
 
 pub struct WindowsMemoryReader;
@@ -34,9 +35,20 @@ impl IMemoryReader for WindowsMemoryReader {
                 &mut bytes_read,
             );
 
-            data_value.copy_from_bytes(&buffer);
+            let success = result != 0 && bytes_read == size;
+            if success {
+                data_value.copy_from_bytes(&buffer);
+            } else {
+                log::debug!(
+                    "ReadProcessMemory failed (addr=0x{:X}, size={}, bytes_read={}, last_error={})",
+                    address,
+                    size,
+                    bytes_read,
+                    GetLastError()
+                );
+            }
 
-            return result != 0;
+            return success;
         }
     }
 
@@ -59,9 +71,20 @@ impl IMemoryReader for WindowsMemoryReader {
                 &mut bytes_read,
             );
 
-            valued_struct.copy_from_bytes(&buffer);
+            let success = result != 0 && bytes_read == size;
+            if success {
+                valued_struct.copy_from_bytes(&buffer);
+            } else {
+                log::debug!(
+                    "ReadProcessMemory failed (addr=0x{:X}, size={}, bytes_read={}, last_error={})",
+                    address,
+                    size,
+                    bytes_read,
+                    GetLastError()
+                );
+            }
 
-            return result != 0;
+            return success;
         }
     }
 
@@ -83,7 +106,18 @@ impl IMemoryReader for WindowsMemoryReader {
                 &mut bytes_read,
             );
 
-            return result != 0;
+            let success = result != 0 && bytes_read == size;
+            if !success {
+                log::debug!(
+                    "ReadProcessMemory failed (addr=0x{:X}, size={}, bytes_read={}, last_error={})",
+                    address,
+                    size,
+                    bytes_read,
+                    GetLastError()
+                );
+            }
+
+            return success;
         }
     }
 }
